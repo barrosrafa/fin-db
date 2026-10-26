@@ -94,6 +94,7 @@ def run_healthcheck(db_url):
                 ("canonical", "currency"),
                 ("canonical", "venue"),
                 ("canonical", "source"),
+                ("canonical", "metric_definition"),
                 ("core", "moeda"),
                 ("core", "fuso_horario"),
                 ("core", "bolsa"),
@@ -108,6 +109,47 @@ def run_healthcheck(db_url):
                     print(f"  • {schema}.{table:<25}: {cnt:>4} rows")
                 except Exception:
                     print(f"  • {schema}.{table:<25}: table not found")
+
+            # 7. Analysis Coverage v3.3 Objects & Extensions
+            print("\n--- Coverage v3.3 Additions ---")
+            v33_tables = [
+                ("canonical", "government_bond_quote"),
+                ("asset_details", "mercado_imobiliario_indicador"),
+                ("canonical", "news_article"),
+                ("canonical", "news_article_instrument"),
+                ("analytics", "valuation"),
+                ("analytics", "score_eixo"),
+                ("canonical", "insider_transaction"),
+                ("canonical", "institutional_holding"),
+                ("asset_details", "etf_composicao"),
+            ]
+            for schema, name in v33_tables:
+                cur.execute(
+                    "SELECT count(*) FROM information_schema.tables WHERE table_schema = %s AND table_name = %s;",
+                    (schema, name)
+                )
+                exists = cur.fetchone()[0] > 0
+                status = "✓ Found" if exists else "✗ Missing"
+                print(f"  • {schema}.{name:<33}: {status}")
+
+            v33_columns = [
+                ("canonical", "fund_profile", "management_fee"),
+                ("canonical", "fund_profile", "performance_fee"),
+                ("canonical", "fund_profile", "benchmark"),
+                ("asset_details", "detalhe_fii", "management_fee"),
+                ("asset_details", "detalhe_fii", "taxa_total"),
+                ("canonical", "fund_holding", "etf_instrument_id"),
+                ("canonical", "metric_definition", "higher_is_better"),
+            ]
+            print("\n--- Coverage v3.3 Column Extensions ---")
+            for schema, table, col in v33_columns:
+                cur.execute(
+                    "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s AND table_name = %s AND column_name = %s;",
+                    (schema, table, col)
+                )
+                exists = cur.fetchone()[0] > 0
+                status = "✓ Found" if exists else "✗ Missing"
+                print(f"  • {schema}.{table}.{col:<25}: {status}")
 
     print("\n" + "=" * 65)
     print("           HEALTHCHECK COMPLETED SUCCESSFULLY")

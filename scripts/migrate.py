@@ -16,7 +16,10 @@ except ImportError:
     sys.exit(1)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_URL = os.environ.get("DATABASE_URL")
+DEFAULT_URL = os.environ.get(
+    "DATABASE_URL",
+    "postgresql://neondb_owner:npg_pwONKPD13RiC@ep-ancient-art-b5mstl4r-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require"
+)
 
 MIGRATION_STAGES = [
     ("00_baseline", REPO_ROOT / "sql" / "00_baseline"),
@@ -24,6 +27,7 @@ MIGRATION_STAGES = [
     ("02_improvements_v3.1", REPO_ROOT / "sql" / "02_improvements_v3.1"),
     ("03_platform_v3.2", REPO_ROOT / "sql" / "03_platform_v3.2"),
     ("04_seeds", REPO_ROOT / "sql" / "04_seeds"),
+    ("05_coverage_v3.3", REPO_ROOT / "sql" / "05_coverage_v3.3"),
 ]
 
 def run_migrations(db_url, stages_to_run=None):
