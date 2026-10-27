@@ -151,6 +151,79 @@ def run_healthcheck(db_url):
                 status = "✓ Found" if exists else "✗ Missing"
                 print(f"  • {schema}.{table}.{col:<25}: {status}")
 
+            # 8. REA Coverage v3.4 (12 Sites Reverse Engineering) Objects & Extensions
+            print("\n--- REA Coverage v3.4 (12 Sites) New Tables ---")
+            v34_tables = [
+                ("core", "instituicao_diretoria_socios"),
+                ("core", "administrador_companhia"),
+                ("core", "remuneracao_administradores"),
+                ("market", "programa_recompra"),
+                ("market", "negociacao_mensal_modalidade"),
+                ("market", "fluxo_opcoes"),
+                ("asset_details", "fii_imovel"),
+                ("asset_details", "fii_imovel_participacao"),
+                ("asset_details", "fii_transacao_venda_imovel"),
+                ("asset_details", "fii_transacao_locacao_imovel"),
+                ("asset_details", "fii_cronograma_contratos"),
+                ("asset_details", "fii_cri_carteira"),
+                ("asset_details", "fii_demonstrativo_trimestral"),
+                ("asset_details", "fii_avaliacao_gestora"),
+                ("analytics", "receita_segmento_negocio"),
+                ("analytics", "receita_geografia"),
+                ("analytics", "kpi_operacional_emissor"),
+                ("analytics", "padrao_candlestick"),
+                ("analytics", "previsao_consenso_analistas"),
+                ("analytics", "checklist_avaliacao_ativo"),
+                ("analytics", "indicador_media_setorial"),
+            ]
+            for schema, name in v34_tables:
+                cur.execute(
+                    "SELECT count(*) FROM information_schema.tables WHERE table_schema = %s AND table_name = %s;",
+                    (schema, name)
+                )
+                exists = cur.fetchone()[0] > 0
+                status = "✓ Found" if exists else "✗ Missing"
+                print(f"  • {schema}.{name:<33}: {status}")
+                if not exists:
+                    sys.exit(1)
+
+            v34_columns = [
+                ("core", "emissor_companhia", "segmento_listagem"),
+                ("core", "emissor_companhia", "free_float_on"),
+                ("core", "emissor_companhia", "reclame_aqui_nota"),
+                ("core", "instituicao_financeira", "nota_geral"),
+                ("market", "aluguel_acoes", "taxa_tomador_media"),
+                ("market", "provento", "mes_referencia"),
+                ("market", "subscricao_acao", "proporcao_sobras_pct"),
+                ("asset_details", "opcao_detalhe", "rho"),
+                ("asset_details", "detalhe_fii", "cap_rate_medio"),
+                ("asset_details", "historico_patrimonio_fii", "passivo_aquisicao_imoveis"),
+                ("asset_details", "rentabilidade_fii", "dy_patrimonial"),
+                ("asset_details", "mercado_imobiliario_indicador", "absorcao_liquida_m2"),
+                ("asset_details", "fundo_investimento", "cvm_175_tipo_entidade"),
+                ("asset_details", "fundo_carteira", "valor_comprado_mes"),
+                ("asset_details", "etf_detalhe", "taxa_administracao_total"),
+                ("canonical", "government_bond_quote", "anbima_indicative_rate"),
+                ("asset_details", "criptomoeda_detalhe", "tvl"),
+                ("analytics", "demonstrativo_financeiro", "fluxo_caixa_livre"),
+                ("analytics", "indicador_fundamentalista", "peg_ratio"),
+                ("analytics", "historico_risco", "alfa_jensen"),
+                ("analytics", "indicador_tecnico", "suporte_4"),
+                ("analytics", "preco_alvo", "qtd_strong_buy"),
+                ("canonical", "disclosure_document", "ai_summary"),
+            ]
+            print("\n--- REA Coverage v3.4 Column Extensions ---")
+            for schema, table, col in v34_columns:
+                cur.execute(
+                    "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s AND table_name = %s AND column_name = %s;",
+                    (schema, table, col)
+                )
+                exists = cur.fetchone()[0] > 0
+                status = "✓ Found" if exists else "✗ Missing"
+                print(f"  • {schema}.{table}.{col:<25}: {status}")
+                if not exists:
+                    sys.exit(1)
+
     print("\n" + "=" * 65)
     print("           HEALTHCHECK COMPLETED SUCCESSFULLY")
     print("=" * 65)

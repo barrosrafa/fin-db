@@ -8,7 +8,7 @@ Implementado e testado em produção no **PostgreSQL 18 (Neon Serverless)** com 
 
 ## 🏛️ Visão Geral da Arquitetura
 
-O banco de dados é estruturado em **12 schemas modulares**, totalizando **282 tabelas e views**, com **36 hypertables** de alta performance para dados temporais:
+O banco de dados é estruturado em **12 schemas modulares**, totalizando **303 tabelas e views**, com **36 hypertables** de alta performance para dados temporais:
 
 ```
                                ┌────────────────────────────────┐
@@ -35,10 +35,10 @@ O banco de dados é estruturado em **12 schemas modulares**, totalizando **282 t
 |---|:---:|---|
 | **`canonical`** | 25 | Modelo canônico unificado para ingestão padronizada de instrumentos, ativos, emissores, cotações de títulos, notícias e fontes |
 | **`raw`** | 2 | Camada *bronze* de ingestão bruta (payloads JSONB, lotes de captura, auditoria de ingestão) |
-| **`core`** | 23 | Cadastros mestres: usuários, emissores, ativos, carteiras, custódia, notas, lotes fiscais e ordens |
-| **`market`** | 29 | Cotações diárias/intraday, books, negócios, proventos, eventos societários, macro e curvas |
-| **`asset_details`**| 20 | Extensões 1:1 especializadas: Ações, FIIs, ETFs, BDRs, Opções, Tesouro, Renda Fixa, Fundos, Cripto, Índices Imobiliários |
-| **`analytics`** | 34 | DFP/ITR, múltiplos fundamentalistas, valuation (Graham/Bazin/DCF), scores por eixo, risco, feature store, screeners |
+| **`core`** | 26 | Cadastros mestres: usuários, emissores, administradores, remuneração executiva, diretoria CVM, ativos, carteiras, custódia, notas, lotes fiscais e ordens |
+| **`market`** | 32 | Cotações diárias/intraday, books, negócios, proventos, recompras, subscrições, fluxo de opções, negociação por modalidade/termo, macro e curvas |
+| **`asset_details`**| 28 | Extensões 1:1 e 1:N especializadas: Ações, FIIs (imóveis físicos, SiiLA vendas/locações, contratos, CRIs, DRE trimestral, gestoras), Fundos CVM 175, ETFs, BDRs, Opções, Tesouro, Renda Fixa, Cripto |
+| **`analytics`** | 41 | DFP/ITR, segmentos de negócio/geografia, KPIs operacionais, múltiplos, valuation, scores por eixo, checklists Buy & Hold, médias setoriais, consenso de analistas, candlestick, risco |
 | **`wealth`** | 26 | Open Finance, contas bancárias, cartões, bens, IR (DARF, prejuízos), reconciliação, aportes |
 | **`social`** | 32 | Watchlists customizadas, anotações do investidor, comunidades, mensagens diretas, kanban de teses |
 | **`dw`** | 8 | Data warehouse: agregações históricas diárias/mensais de patrimônio, rentabilidade e posições |
@@ -70,7 +70,8 @@ fin-db/
 │   ├── 01_pacote_completo_diyfin.md   # DDL base, mapeamento de APIs, roadmap MVP
 │   ├── 02_melhorias_ddl_v3.1.md        # Melhorias v3.1: Tax lot, RLS, triggers, auditoria
 │   ├── 03_melhorias_ddl_v3.2_analise.md# DDL v3.2: Reconciliação, SCD, UX, segurança
-│   └── 04_complementos_sites_analise_v3.3.md # SDD v3.3: Cobertura de 12 sites de análise
+│   ├── 04_complementos_sites_analise_v3.3.md # SDD v3.3: Cobertura inicial de sites de análise
+│   └── 05_rea_12_sites_coverage_v3.4.md      # SDD & REA v3.4: Engenharia Reversa completa dos 12 sites
 ├── sql/
 │   ├── 00_baseline/                    # Schemas pré-existentes e extensões
 │   │   ├── 00_extensions_and_schemas.sql
@@ -109,18 +110,25 @@ fin-db/
 │   │   ├── 02_market_benchmarks.sql
 │   │   ├── 03_analytics_tags.sql
 │   │   └── 04_system_oauth.sql
-│   └── 05_coverage_v3.3/               # Cobertura de 12 sites de análise de investimentos
-│       ├── 01_canonical_government_bond_quote.sql
-│       ├── 02_asset_details_mercado_imobiliario.sql
-│       ├── 03_canonical_news_article.sql
-│       ├── 04_analytics_valuation.sql
-│       ├── 05_analytics_score_eixo.sql
-│       ├── 06_canonical_insider_transaction.sql
-│       ├── 07_canonical_institutional_holding.sql
-│       ├── 08_alter_fund_profile_fees.sql
-│       ├── 09_alter_detalhe_fii_fees.sql
-│       ├── 10_alter_fund_holding_etf_view.sql
-│       └── 11_seeds_metric_definition.sql
+│   ├── 05_coverage_v3.3/               # Cobertura v3.3 de sites de análise de investimentos
+│   │   ├── 01_canonical_government_bond_quote.sql
+│   │   ├── 02_asset_details_mercado_imobiliario.sql
+│   │   ├── 03_canonical_news_article.sql
+│   │   ├── 04_analytics_valuation.sql
+│   │   ├── 05_analytics_score_eixo.sql
+│   │   ├── 06_canonical_insider_transaction.sql
+│   │   ├── 07_canonical_institutional_holding.sql
+│   │   ├── 08_alter_fund_profile_fees.sql
+│   │   ├── 09_alter_detalhe_fii_fees.sql
+│   │   ├── 10_alter_fund_holding_etf_view.sql
+│   │   └── 11_seeds_metric_definition.sql
+│   └── 06_rea_coverage_v3.4/           # REA profundo dos 12 sites de análise (v3.4)
+│       ├── 01_enums_and_core_governance.sql
+│       ├── 02_market_buybacks_btc_termo_options.sql
+│       ├── 03_asset_details_fii_real_estate_deep.sql
+│       ├── 04_asset_details_funds_etfs_bonds_crypto.sql
+│       ├── 05_analytics_segments_consensus_technical_checklists.sql
+│       └── 06_seeds_metrics_and_benchmarks.sql
 ├── scripts/
 │   ├── migrate.py                      # Runner automatizado de migrações
 │   └── verify_db.py                    # Healthcheck completo do banco de dados
@@ -182,19 +190,19 @@ User:     neondb_owner
 Engine:   PostgreSQL 18.6
 
 --- Schema & Table Inventory ---
-  • Schema analytics      :   34 tables/views
-  • Schema asset_details  :   20 tables/views
+  • Schema analytics      :   41 tables/views
+  • Schema asset_details  :   28 tables/views
   • Schema canonical      :   25 tables/views
-  • Schema core           :   23 tables/views
+  • Schema core           :   26 tables/views
   • Schema dw             :    8 tables/views
-  • Schema market         :   29 tables/views
+  • Schema market         :   32 tables/views
   • Schema neon_auth      :    9 tables/views
   • Schema raw            :    2 tables/views
   • Schema social         :   32 tables/views
   • Schema system         :   70 tables/views
   • Schema wealth         :   26 tables/views
   -------------------------------------
-  TOTAL APPLICATION OBJECTS: 282
+  TOTAL APPLICATION OBJECTS: 303
 
 --- TimescaleDB Hypertables ---
   Total Hypertables: 36
