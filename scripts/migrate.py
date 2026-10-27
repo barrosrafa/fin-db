@@ -29,6 +29,8 @@ MIGRATION_STAGES = [
     ("04_seeds", REPO_ROOT / "sql" / "04_seeds"),
     ("05_coverage_v3.3", REPO_ROOT / "sql" / "05_coverage_v3.3"),
     ("06_rea_coverage_v3.4", REPO_ROOT / "sql" / "06_rea_coverage_v3.4"),
+    ("07_portfolio_graph_reconciliation_v3.5", REPO_ROOT / "sql" / "07_portfolio_graph_reconciliation_v3.5"),
+    ("08_status_invest_coverage_v3.6", REPO_ROOT / "sql" / "08_status_invest_coverage_v3.6"),
 ]
 
 def run_migrations(db_url, stages_to_run=None):

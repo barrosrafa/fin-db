@@ -224,6 +224,30 @@ def run_healthcheck(db_url):
                 if not exists:
                     sys.exit(1)
 
+            # 9. Status Invest Coverage v3.6 Extensions
+            print("\n--- Status Invest Coverage v3.6 Column Extensions ---")
+            v36_columns = [
+                ("asset_details", "detalhe_fii", "ultimo_dividendo"),
+                ("asset_details", "detalhe_fii", "valor_patrimonial_cota"),
+                ("asset_details", "detalhe_fii", "pvp"),
+                ("asset_details", "detalhe_fii", "dividend_yield"),
+                ("asset_details", "detalhe_fii", "percentual_em_caixa"),
+                ("asset_details", "detalhe_fii", "cagr_dividendos_3a"),
+                ("asset_details", "detalhe_fii", "cagr_valor_cota_3a"),
+                ("asset_details", "detalhe_fii", "patrimonio_liquido"),
+                ("asset_details", "detalhe_fii", "quantidade_cotas"),
+            ]
+            for schema, table, col in v36_columns:
+                cur.execute(
+                    "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s AND table_name = %s AND column_name = %s;",
+                    (schema, table, col)
+                )
+                exists = cur.fetchone()[0] > 0
+                status = "✓ Found" if exists else "✗ Missing"
+                print(f"  • {schema}.{table}.{col:<25}: {status}")
+                if not exists:
+                    sys.exit(1)
+
     print("\n" + "=" * 65)
     print("           HEALTHCHECK COMPLETED SUCCESSFULLY")
     print("=" * 65)
