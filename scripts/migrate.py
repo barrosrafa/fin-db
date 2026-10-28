@@ -55,6 +55,7 @@ MIGRATION_STAGES = [
     ("12_etfs_brasil_coverage_v4.0", REPO_ROOT / "sql" / "12_etfs_brasil_coverage_v4.0"),
     ("13_billing_and_auth_v4.1", REPO_ROOT / "sql" / "13_billing_and_auth_v4.1"),
     ("14_ingestion_control_and_data_quality_v4.2", REPO_ROOT / "sql" / "14_ingestion_control_and_data_quality_v4.2"),
+    ("15_dbt_raw_landing_views_v4.3", REPO_ROOT / "sql" / "15_dbt_raw_landing_views_v4.3"),
 ]
 
 LOCK_KEY = 742198273  # Deterministic 32-bit int for pg_advisory_lock
