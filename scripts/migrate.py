@@ -31,6 +31,10 @@ MIGRATION_STAGES = [
     ("06_rea_coverage_v3.4", REPO_ROOT / "sql" / "06_rea_coverage_v3.4"),
     ("07_portfolio_graph_reconciliation_v3.5", REPO_ROOT / "sql" / "07_portfolio_graph_reconciliation_v3.5"),
     ("08_status_invest_coverage_v3.6", REPO_ROOT / "sql" / "08_status_invest_coverage_v3.6"),
+    ("09_fundamentus_coverage_v3.7", REPO_ROOT / "sql" / "09_fundamentus_coverage_v3.7"),
+    ("10_oceans14_coverage_v3.8", REPO_ROOT / "sql" / "10_oceans14_coverage_v3.8"),
+    ("11_analise_de_acoes_coverage_v3.9", REPO_ROOT / "sql" / "11_analise_de_acoes_coverage_v3.9"),
+    ("12_etfs_brasil_coverage_v4.0", REPO_ROOT / "sql" / "12_etfs_brasil_coverage_v4.0"),
 ]
 
 def run_migrations(db_url, stages_to_run=None):
