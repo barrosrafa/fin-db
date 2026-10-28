@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-fin-db: Automated Migration Runner
-Applies SQL migrations and seeds in correct dependency order to Neon or PostgreSQL.
+fin-db: Robust Transactional Migration Runner with Ledger, Checksums & Advisory Lock
+Applies SQL migrations and seeds in strict dependency order with idempotency.
 """
 
 import os
 import sys
 import argparse
+import hashlib
 from pathlib import Path
 
 try:
@@ -35,19 +36,65 @@ MIGRATION_STAGES = [
     ("10_oceans14_coverage_v3.8", REPO_ROOT / "sql" / "10_oceans14_coverage_v3.8"),
     ("11_analise_de_acoes_coverage_v3.9", REPO_ROOT / "sql" / "11_analise_de_acoes_coverage_v3.9"),
     ("12_etfs_brasil_coverage_v4.0", REPO_ROOT / "sql" / "12_etfs_brasil_coverage_v4.0"),
+    ("13_billing_and_auth_v4.1", REPO_ROOT / "sql" / "13_billing_and_auth_v4.1"),
 ]
 
-def run_migrations(db_url, stages_to_run=None):
+LOCK_KEY = 742198273  # Deterministic 32-bit int for pg_advisory_lock
+
+
+def get_file_sha256(filepath: Path) -> str:
+    h = hashlib.sha256()
+    with open(filepath, "rb") as f:
+        while chunk := f.read(8192):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def ensure_migration_table(conn):
+    with conn.cursor() as cur:
+        cur.execute("CREATE SCHEMA IF NOT EXISTS system;")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS system.schema_migrations (
+                version    VARCHAR(255) PRIMARY KEY,
+                checksum   VARCHAR(64) NOT NULL,
+                applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+        """)
+    conn.commit()
+
+
+def get_applied_migrations(conn):
+    with conn.cursor() as cur:
+        cur.execute("SELECT version, checksum FROM system.schema_migrations;")
+        return dict(cur.fetchall())
+
+
+def run_migrations(db_url: str, stages_to_run=None, dry_run: bool = False):
     if not db_url:
         print("ERROR: DATABASE_URL not provided via CLI argument or environment variable.")
         sys.exit(1)
 
-    print("=" * 65)
-    print("                 FIN-DB: MIGRATION RUNNER")
-    print("=" * 65)
-    
-    with psycopg.connect(db_url, autocommit=True) as conn:
+    print("=" * 70)
+    print("        FIN-DB: ROBUST TRANSACTIONAL MIGRATION RUNNER")
+    print("=" * 70)
+
+    try:
+        conn = psycopg.connect(db_url)
+    except Exception as e:
+        print(f"ERROR: Failed to connect to database: {e}")
+        sys.exit(1)
+
+    with conn:
         with conn.cursor() as cur:
+            cur.execute("SELECT pg_advisory_lock(%s);", (LOCK_KEY,))
+
+        try:
+            ensure_migration_table(conn)
+            applied_map = get_applied_migrations(conn)
+
+            total_applied = 0
+            total_skipped = 0
+
             for stage_name, stage_path in MIGRATION_STAGES:
                 if stages_to_run and stage_name not in stages_to_run:
                     continue
@@ -60,25 +107,63 @@ def run_migrations(db_url, stages_to_run=None):
                 print(f"\n▶ Stage: {stage_name} ({len(sql_files)} files)")
 
                 for sql_file in sql_files:
+                    version_key = f"{stage_name}/{sql_file.name}"
+                    current_checksum = get_file_sha256(sql_file)
+
+                    if version_key in applied_map:
+                        stored_checksum = applied_map[version_key]
+                        if stored_checksum != current_checksum:
+                            print(f"  ⚠ WARNING: Checksum mismatch on {version_key} (drift detected).")
+                        else:
+                            print(f"  • {sql_file.name} [Already applied ✓]")
+                            total_skipped += 1
+                            continue
+
+                    if dry_run:
+                        print(f"  [DRY-RUN] Would apply: {sql_file.name} (SHA: {current_checksum[:8]})")
+                        total_applied += 1
+                        continue
+
                     print(f"  • Applying {sql_file.name}...", end=" ", flush=True)
                     try:
                         with open(sql_file, "r", encoding="utf-8") as f:
                             sql = f.read()
-                        cur.execute(sql)
+
+                        with conn.transaction():
+                            with conn.cursor() as cur:
+                                cur.execute(sql)
+                                cur.execute(
+                                    """
+                                    INSERT INTO system.schema_migrations (version, checksum)
+                                    VALUES (%s, %s)
+                                    ON CONFLICT (version) DO UPDATE SET 
+                                        checksum = EXCLUDED.checksum, 
+                                        applied_at = NOW();
+                                    """,
+                                    (version_key, current_checksum),
+                                )
                         print("✓ OK")
+                        total_applied += 1
                     except Exception as e:
-                        print(f"✗ FAILED: {e}")
+                        print(f"\n✗ FAILED on {version_key}: {e}")
                         sys.exit(1)
 
-    print("\n" + "=" * 65)
-    print("                 ALL MIGRATIONS APPLIED!")
-    print("=" * 65)
+            print("\n" + "=" * 70)
+            status_text = "DRY RUN COMPLETE" if dry_run else "ALL MIGRATIONS SYNCHRONIZED"
+            print(f"  {status_text}: {total_applied} applied, {total_skipped} skipped.")
+            print("=" * 70)
+
+        finally:
+            with conn.cursor() as cur:
+                cur.execute("SELECT pg_advisory_unlock(%s);", (LOCK_KEY,))
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run fin-db database migrations")
     parser.add_argument("--url", default=DEFAULT_URL, help="PostgreSQL connection string")
     parser.add_argument("--stage", choices=[s[0] for s in MIGRATION_STAGES], help="Run only specific stage")
+    parser.add_argument("--dry-run", action="store_true", help="Inspect pending migrations without executing")
     args = parser.parse_args()
 
     stages = [args.stage] if args.stage else None
-    run_migrations(args.url, stages)
+    run_migrations(args.url, stages, dry_run=args.dry_run)

@@ -70,42 +70,60 @@ ALTER TABLE social.anotacao_ativo    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE system.api_key           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE system.dispositivo       ENABLE ROW LEVEL SECURITY;
 
--- Políticas de exemplo (usuário só vê suas carteiras)
+-- Políticas idempotentes (usuário só vê suas carteiras com validação segura de UUID)
+DROP POLICY IF EXISTS p_carteira_owner ON core.carteira;
 CREATE POLICY p_carteira_owner ON core.carteira
-    USING (id_usuario = current_setting('app.current_user_id', TRUE)::uuid);
+    FOR ALL
+    USING (id_usuario = NULLIF(current_setting('app.current_user_id', TRUE), '')::uuid);
 
+DROP POLICY IF EXISTS p_posicao_owner ON core.posicao_custodia;
 CREATE POLICY p_posicao_owner ON core.posicao_custodia
+    FOR ALL
     USING (id_carteira IN (
         SELECT id_carteira FROM core.carteira
-        WHERE id_usuario = current_setting('app.current_user_id', TRUE)::uuid
+        WHERE id_usuario = NULLIF(current_setting('app.current_user_id', TRUE), '')::uuid
     ));
 
+DROP POLICY IF EXISTS p_ordem_owner ON core.ordem;
 CREATE POLICY p_ordem_owner ON core.ordem
+    FOR ALL
     USING (id_carteira IN (
         SELECT id_carteira FROM core.carteira
-        WHERE id_usuario = current_setting('app.current_user_id', TRUE)::uuid
+        WHERE id_usuario = NULLIF(current_setting('app.current_user_id', TRUE), '')::uuid
     ));
 
+DROP POLICY IF EXISTS p_lote_owner ON core.lote_ativo;
 CREATE POLICY p_lote_owner ON core.lote_ativo
+    FOR ALL
     USING (id_carteira IN (
         SELECT id_carteira FROM core.carteira
-        WHERE id_usuario = current_setting('app.current_user_id', TRUE)::uuid
+        WHERE id_usuario = NULLIF(current_setting('app.current_user_id', TRUE), '')::uuid
     ));
 
+DROP POLICY IF EXISTS p_ir_owner ON wealth.apuracao_ir;
 CREATE POLICY p_ir_owner ON wealth.apuracao_ir
-    USING (id_usuario = current_setting('app.current_user_id', TRUE)::uuid);
+    FOR ALL
+    USING (id_usuario = NULLIF(current_setting('app.current_user_id', TRUE), '')::uuid);
 
+DROP POLICY IF EXISTS p_watchlist_owner ON social.watchlist;
 CREATE POLICY p_watchlist_owner ON social.watchlist
-    USING (id_usuario = current_setting('app.current_user_id', TRUE)::uuid);
+    FOR ALL
+    USING (id_usuario = NULLIF(current_setting('app.current_user_id', TRUE), '')::uuid);
 
+DROP POLICY IF EXISTS p_anotacao_owner ON social.anotacao_ativo;
 CREATE POLICY p_anotacao_owner ON social.anotacao_ativo
-    USING (id_usuario = current_setting('app.current_user_id', TRUE)::uuid);
+    FOR ALL
+    USING (id_usuario = NULLIF(current_setting('app.current_user_id', TRUE), '')::uuid);
 
+DROP POLICY IF EXISTS p_apikey_owner ON system.api_key;
 CREATE POLICY p_apikey_owner ON system.api_key
-    USING (id_usuario = current_setting('app.current_user_id', TRUE)::uuid);
+    FOR ALL
+    USING (id_usuario = NULLIF(current_setting('app.current_user_id', TRUE), '')::uuid);
 
+DROP POLICY IF EXISTS p_dispositivo_owner ON system.dispositivo;
 CREATE POLICY p_dispositivo_owner ON system.dispositivo
-    USING (id_usuario = current_setting('app.current_user_id', TRUE)::uuid);
+    FOR ALL
+    USING (id_usuario = NULLIF(current_setting('app.current_user_id', TRUE), '')::uuid);
 
 -- 7.5 Views úteis para o app
 CREATE OR REPLACE VIEW core.v_posicao_atual AS
