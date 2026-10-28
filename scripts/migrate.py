@@ -17,6 +17,23 @@ except ImportError:
     sys.exit(1)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Tenta carregar .env automaticamente se presente
+env_file = REPO_ROOT / ".env"
+if env_file.exists():
+    try:
+        with open(env_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    k = k.strip()
+                    v = v.strip().strip("'\"")
+                    if k not in os.environ and v:
+                        os.environ[k] = v
+    except Exception:
+        pass
+
 DEFAULT_URL = os.environ.get(
     "DATABASE_URL",
     "postgresql://neondb_owner:@ep-ancient-art-b5mstl4r-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require"
@@ -37,6 +54,7 @@ MIGRATION_STAGES = [
     ("11_analise_de_acoes_coverage_v3.9", REPO_ROOT / "sql" / "11_analise_de_acoes_coverage_v3.9"),
     ("12_etfs_brasil_coverage_v4.0", REPO_ROOT / "sql" / "12_etfs_brasil_coverage_v4.0"),
     ("13_billing_and_auth_v4.1", REPO_ROOT / "sql" / "13_billing_and_auth_v4.1"),
+    ("14_ingestion_control_and_data_quality_v4.2", REPO_ROOT / "sql" / "14_ingestion_control_and_data_quality_v4.2"),
 ]
 
 LOCK_KEY = 742198273  # Deterministic 32-bit int for pg_advisory_lock
