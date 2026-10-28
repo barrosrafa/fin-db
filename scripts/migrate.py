@@ -18,7 +18,7 @@ except ImportError:
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_URL = os.environ.get(
     "DATABASE_URL",
-    "postgresql://neondb_owner:npg_pwONKPD13RiC@ep-ancient-art-b5mstl4r-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require"
+    "postgresql://neondb_owner:@ep-ancient-art-b5mstl4r-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require"
 )
 
 MIGRATION_STAGES = [

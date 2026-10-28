@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 MIGRATION_FILE = REPO_ROOT / "sql" / "12_etfs_brasil_coverage_v4.0" / "01_etfs_brasil_tables_and_views.sql"
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
-    "postgresql://neondb_owner:npg_pwONKPD13RiC@ep-ancient-art-b5mstl4r-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require"
+    "postgresql://neondb_owner:@ep-ancient-art-b5mstl4r-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require"
 )
 
 EXPECTED_TABLES = [

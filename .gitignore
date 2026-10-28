@@ -44,3 +44,7 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Redis local dump
+*.rdb
+dump.rdb
