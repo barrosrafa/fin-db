@@ -9,7 +9,7 @@ batch inserts (chunks of 150) into Neon PostgreSQL.
 import sys
 import os
 import csv
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 import psycopg
@@ -62,6 +62,7 @@ def read_csv(path):
 def ingest(db_url, stocks_path, fiis_path, batch_size=150, ref_date=None):
     if ref_date is None:
         ref_date = date(2026, 10, 26)
+        observed_at = datetime.now(timezone.utc)
 
     stocks_rows = read_csv(stocks_path)
     fiis_rows = read_csv(fiis_path)
@@ -132,7 +133,7 @@ def ingest(db_url, stocks_path, fiis_path, batch_size=150, ref_date=None):
                         preco = sanitize_decimal(r.get("PRECO"))
                         vol = sanitize_decimal(r.get("LIQUIDEZ MEDIA DIARIA"))
 
-                        cotacao_batch.append((aid, ref_date, preco, preco, vol, None, None))
+                        cotacao_batch.append((aid, observed_at, preco, None, vol))
 
                         indicadores_batch.append((
                             aid,
@@ -168,14 +169,9 @@ def ingest(db_url, stocks_path, fiis_path, batch_size=150, ref_date=None):
 
                     cur.executemany(
                         """
-                        INSERT INTO market.cotacao_diaria (
-                            id_ativo, data_pregao, preco_fechamento, preco_medio, volume_total,
-                            patrimonio_liquido_fundo, numero_cotistas_fundo
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (id_ativo, data_pregao) DO UPDATE SET
-                            preco_fechamento = EXCLUDED.preco_fechamento,
-                            preco_medio = COALESCE(EXCLUDED.preco_medio, market.cotacao_diaria.preco_medio),
-                            volume_total = EXCLUDED.volume_total;
+                        INSERT INTO market.cotacao_intraday (
+                            id_ativo, timestamp, preco_atual, variacao, volume
+                        ) VALUES (%s, %s, %s, %s, %s);
                         """,
                         cotacao_batch,
                     )
@@ -289,7 +285,7 @@ def ingest(db_url, stocks_path, fiis_path, batch_size=150, ref_date=None):
                         g_str = r.get("GESTAO", "").strip()
                         gid = gestao_map.get(g_str) if g_str else None
 
-                        cotacao_batch.append((aid, ref_date, preco, preco, vol, patrimonio, n_cotistas))
+                        cotacao_batch.append((aid, observed_at, preco, None, vol))
 
                         detalhe_batch.append((
                             aid,
@@ -312,16 +308,9 @@ def ingest(db_url, stocks_path, fiis_path, batch_size=150, ref_date=None):
 
                     cur.executemany(
                         """
-                        INSERT INTO market.cotacao_diaria (
-                            id_ativo, data_pregao, preco_fechamento, preco_medio, volume_total,
-                            patrimonio_liquido_fundo, numero_cotistas_fundo
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (id_ativo, data_pregao) DO UPDATE SET
-                            preco_fechamento = EXCLUDED.preco_fechamento,
-                            preco_medio = COALESCE(EXCLUDED.preco_medio, market.cotacao_diaria.preco_medio),
-                            volume_total = EXCLUDED.volume_total,
-                            patrimonio_liquido_fundo = COALESCE(EXCLUDED.patrimonio_liquido_fundo, market.cotacao_diaria.patrimonio_liquido_fundo),
-                            numero_cotistas_fundo = COALESCE(EXCLUDED.numero_cotistas_fundo, market.cotacao_diaria.numero_cotistas_fundo);
+                        INSERT INTO market.cotacao_intraday (
+                            id_ativo, timestamp, preco_atual, variacao, volume
+                        ) VALUES (%s, %s, %s, %s, %s);
                         """,
                         cotacao_batch,
                     )
