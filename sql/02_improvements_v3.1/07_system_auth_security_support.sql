@@ -62,8 +62,8 @@ CREATE TABLE system.tentativa_login (
 SELECT create_hypertable('system.tentativa_login','data_hora', chunk_time_interval => INTERVAL '1 month');
 CREATE INDEX idx_tent_login_email ON system.tentativa_login(email, data_hora DESC);
 
-INSERT INTO system.oauth_provider (nome, ativo) VALUES
-    ('GOOGLE', FALSE),('APPLE', FALSE),('FACEBOOK', FALSE),('GITHUB', FALSE);
+
+                                                                            ;
 
 -- 6.2 Termos, Consentimentos e LGPD
 CREATE TABLE system.versao_termo (

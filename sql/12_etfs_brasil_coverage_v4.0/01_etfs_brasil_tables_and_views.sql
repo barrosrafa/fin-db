@@ -51,9 +51,9 @@ CREATE TABLE IF NOT EXISTS market.etf_composicao_carteira (
     valor_mercado_posicao       NUMERIC(22,2),
     created_at                  TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_etf_comp_fundo_data 
+CREATE INDEX IF NOT EXISTS idx_etf_comp_fundo_data
     ON market.etf_composicao_carteira(id_ativo_fundo, data_referencia DESC);
-CREATE INDEX IF NOT EXISTS idx_etf_comp_subjacente 
+CREATE INDEX IF NOT EXISTS idx_etf_comp_subjacente
     ON market.etf_composicao_carteira(codigo_ativo, data_referencia);
 
 -- 4. Séries Históricas de NAV, Spread de Arbitragem e Tracking Difference Diário
@@ -63,8 +63,8 @@ CREATE TABLE IF NOT EXISTS market.etf_metricas_diarias (
     preco_fechamento_mercado    NUMERIC(14,4) NOT NULL,
     nav_cota_patrimonial        NUMERIC(14,4) NOT NULL,
     spread_nav_pct              NUMERIC(8,4) GENERATED ALWAYS AS (
-                                    CASE WHEN nav_cota_patrimonial > 0 
-                                         THEN ((preco_fechamento_mercado - nav_cota_patrimonial) / nav_cota_patrimonial) * 100.0 
+                                    CASE WHEN nav_cota_patrimonial > 0
+                                         THEN ((preco_fechamento_mercado - nav_cota_patrimonial) / nav_cota_patrimonial) * 100.0
                                          ELSE 0.0 END
                                 ) STORED,
     patrimonio_liquido_diario   NUMERIC(22,2),
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS market.etf_metricas_diarias (
     tracking_difference_acum_ano NUMERIC(8,4),
     PRIMARY KEY (id_ativo, data_pregao)
 );
-CREATE INDEX IF NOT EXISTS idx_etf_metricas_data 
+CREATE INDEX IF NOT EXISTS idx_etf_metricas_data
     ON market.etf_metricas_diarias(data_pregao DESC);
 
 -- 5. Tabelas para o Motor de Simulação de Portfólios
@@ -141,58 +141,58 @@ CREATE TABLE IF NOT EXISTS market.comparador_par_canonico (
 );
 CREATE INDEX IF NOT EXISTS idx_comp_par_b ON market.comparador_par_canonico(ticker_b, ticker_a);
 
--- 7. Seeds Iniciais de Suporte: Holdings de Demonstração e Pares Canônicos
-DO $$
-DECLARE
-    v_id_bova INT;
-    v_id_ivvb INT;
-    v_id_smal INT;
-    v_id_vale INT;
-    v_id_petr INT;
-    v_id_itub INT;
-BEGIN
-    SELECT id_ativo INTO v_id_bova FROM core.ativo WHERE ticker = 'BOVA11';
-    SELECT id_ativo INTO v_id_ivvb FROM core.ativo WHERE ticker = 'IVVB11';
-    SELECT id_ativo INTO v_id_smal FROM core.ativo WHERE ticker = 'SMAL11';
-    SELECT id_ativo INTO v_id_vale FROM core.ativo WHERE ticker = 'VALE3';
-    SELECT id_ativo INTO v_id_petr FROM core.ativo WHERE ticker = 'PETR4';
-    SELECT id_ativo INTO v_id_itub FROM core.ativo WHERE ticker = 'ITUB4';
+-- 7. Estruturas para composição de carteira e comparação de ETFs
 
-    -- Se existirem os ativos, povoar holdings demonstrativas em market.etf_composicao_carteira
-    IF v_id_bova IS NOT NULL THEN
-        DELETE FROM market.etf_composicao_carteira WHERE id_ativo_fundo = v_id_bova;
-        INSERT INTO market.etf_composicao_carteira (id_ativo_fundo, data_referencia, id_ativo_subjacente, codigo_ativo, descricao_ativo, setor_economico, peso_percentual)
-        VALUES 
-            (v_id_bova, CURRENT_DATE, v_id_vale, 'VALE3', 'Vale S.A.', 'Materiais Básicos', 13.5000),
-            (v_id_bova, CURRENT_DATE, v_id_petr, 'PETR4', 'Petrobras PN', 'Petróleo e Gás', 11.2000),
-            (v_id_bova, CURRENT_DATE, v_id_itub, 'ITUB4', 'Itaú Unibanco PN', 'Financeiro', 8.6000),
-            (v_id_bova, CURRENT_DATE, NULL, 'BBDC4', 'Banco Bradesco PN', 'Financeiro', 4.5000),
-            (v_id_bova, CURRENT_DATE, NULL, 'B3SA3', 'B3 S.A.', 'Financeiro', 3.8000);
-    END IF;
 
-    -- Par canônico inicial demonstrativo: BOVA11 vs SMAL11
-    INSERT INTO market.comparador_par_canonico (
-        ticker_a, ticker_b, data_calculo, overlap_holdings_pct, delta_taxa_adm, 
-        tracking_error_a, tracking_error_b, correlacao_historica_12m, dados_comparacao_json
-    )
-    VALUES (
-        'BOVA11', 'SMAL11', CURRENT_DATE, 4.25, -0.4000, 0.12, 0.35, 0.78,
-        '{"winner": "BOVA11", "overlap_pct": 4.25, "theme": "Ações Brasil Large vs Small Caps"}'::jsonb
-    )
-    ON CONFLICT (ticker_a, ticker_b) DO UPDATE
-    SET overlap_holdings_pct = EXCLUDED.overlap_holdings_pct,
-        data_calculo = EXCLUDED.data_calculo;
 
-    -- Par canônico inicial demonstrativo: CDIB11 vs LFTB11
-    INSERT INTO market.comparador_par_canonico (
-        ticker_a, ticker_b, data_calculo, overlap_holdings_pct, delta_taxa_adm, 
-        tracking_error_a, tracking_error_b, correlacao_historica_12m, dados_comparacao_json
-    )
-    VALUES (
-        'CDIB11', 'LFTB11', CURRENT_DATE, 72.50, -0.0400, 0.05, 0.06, 0.99,
-        '{"winner": "CDIB11", "overlap_pct": 72.50, "theme": "ETFs de Renda Fixa Pós-Fixada / Tesouro Selic"}'::jsonb
-    )
-    ON CONFLICT (ticker_a, ticker_b) DO UPDATE
-    SET overlap_holdings_pct = EXCLUDED.overlap_holdings_pct,
-        data_calculo = EXCLUDED.data_calculo;
-END $$;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      ;

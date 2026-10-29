@@ -33,19 +33,19 @@ CREATE TABLE analytics.ativo_tag (
     PRIMARY KEY (id_ativo, id_tag)
 );
 
-INSERT INTO analytics.tag (nome, tipo) VALUES
-    ('Dividendos','ESTRATEGIA'),
-    ('Value','ESTRATEGIA'),
-    ('Growth','ESTRATEGIA'),
-    ('Small Caps','PERFIL'),
-    ('Blue Chips','PERFIL'),
-    ('ESG','TEMA'),
-    ('Turnaround','TEMA'),
-    ('Papel','SETOR'),
-    ('Logística','SETOR'),
-    ('Shopping','SETOR'),
-    ('Híbrido','SETOR'),
-    ('Fiagro','SETOR');
+
+
+
+
+
+
+
+
+
+
+
+
+                      ;
 
 -- 3.3 Coleções Curadas
 CREATE TABLE analytics.colecao (

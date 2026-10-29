@@ -1,257 +1,137 @@
 #!/usr/bin/env python3
-"""
-fin-db: Database Verification and Healthcheck Script
-Connects to Neon PostgreSQL and checks schemas, tables, hypertables, views, and row counts.
-"""
+"""Read-only inventory and optional empty-database assertion for fin-db."""
 
+import argparse
 import os
 import sys
 
 try:
     import psycopg
+    from psycopg import sql as psql
 except ImportError:
-    print("Please install psycopg: pip install 'psycopg[binary]' or use 'uv run'")
+    print("Install psycopg with: pip install 'psycopg[binary]'")
     sys.exit(1)
 
-DEFAULT_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql://neondb_owner:@ep-ancient-art-b5mstl4r-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require"
+INTERNAL_SCHEMAS = (
+    "information_schema", "pg_catalog", "neon_auth", "neon_identity",
+    "_timescaledb_catalog", "_timescaledb_config", "_timescaledb_internal",
+    "_timescaledb_functions", "_timescaledb_debug", "timescaledb_information",
+    "timescaledb_experimental",
 )
 
-def run_healthcheck(db_url):
-    print("=" * 65)
-    print("           FIN-DB: NEON DATABASE HEALTHCHECK")
-    print("=" * 65)
-    
+
+def run_healthcheck(db_url: str, assert_empty: bool = False) -> bool:
+    if not db_url:
+        raise ValueError("DATABASE_URL is required (or pass --url).")
+
+    failures = []
     with psycopg.connect(db_url) as conn:
         with conn.cursor() as cur:
-            # 1. Database Info
             cur.execute("SELECT current_database(), current_user, version();")
-            db, user, ver = cur.fetchone()
-            print(f"Database: {db}")
-            print(f"User:     {user}")
-            print(f"Engine:   {ver.split(',')[0]}\n")
+            database, role, version = cur.fetchone()
+            print(f"Database: {database}")
+            print(f"Role: {role}")
+            print(f"Engine: {version.split(',')[0]}")
 
-            # 2. Installed Extensions
-            print("--- Installed Extensions ---")
             cur.execute("SELECT extname, extversion FROM pg_extension ORDER BY extname;")
-            for name, version in cur.fetchall():
-                print(f"  • {name:<20} v{version}")
-            print()
+            print("\nExtensions:")
+            for name, ext_version in cur.fetchall():
+                print(f"  {name}: {ext_version}")
 
-            # 3. Schemas and Tables
-            print("--- Schema & Table Inventory ---")
-            cur.execute("""
-                SELECT table_schema, count(*) 
-                FROM information_schema.tables 
-                WHERE table_schema NOT IN (
-                    'information_schema', 'pg_catalog', 'timescaledb_information',
-                    '_timescaledb_catalog', '_timescaledb_config', '_timescaledb_internal',
-                    '_timescaledb_functions', '_timescaledb_debug', 'timescaledb_experimental'
-                )
-                GROUP BY table_schema
-                ORDER BY table_schema;
-            """)
-            total_tables = 0
-            for schema, count in cur.fetchall():
-                print(f"  • Schema {schema:<15}: {count:>3} tables/views")
-                total_tables += count
-            print(f"  -------------------------------------")
-            print(f"  TOTAL APPLICATION OBJECTS: {total_tables}\n")
+            cur.execute(
+                """
+                SELECT table_schema,
+                       count(*) FILTER (WHERE table_type = 'BASE TABLE') AS tables,
+                       count(*) FILTER (WHERE table_type = 'VIEW') AS views
+                  FROM information_schema.tables
+                 WHERE table_schema <> ALL(%s)
+                   AND table_schema NOT LIKE 'pg\\_%%' ESCAPE '\\'
+                   AND table_schema NOT LIKE '\\_timescaledb\\_%%' ESCAPE '\\'
+                 GROUP BY table_schema
+                 ORDER BY table_schema;
+                """,
+                (list(INTERNAL_SCHEMAS),),
+            )
+            inventory = cur.fetchall()
+            print("\nApplication schema inventory:")
+            total_tables = total_views = 0
+            for schema, tables, views in inventory:
+                print(f"  {schema}: {tables} tables, {views} views")
+                total_tables += tables
+                total_views += views
+            print(f"Total: {total_tables} tables, {total_views} views")
 
-            # 4. Hypertables (TimescaleDB)
-            print("--- TimescaleDB Hypertables ---")
-            try:
-                cur.execute("""
-                    SELECT hypertable_schema, hypertable_name, num_chunks, compression_enabled 
-                    FROM timescaledb_information.hypertables
-                    ORDER BY hypertable_schema, hypertable_name;
-                """)
-                hypertables = cur.fetchall()
-                print(f"  Total Hypertables: {len(hypertables)}")
-                for s, name, chunks, comp in hypertables:
-                    print(f"  • {s}.{name:<30} (chunks: {chunks}, compression: {comp})")
-            except Exception as e:
-                print(f"  Timescale info unavailable: {e}")
-            print()
+            cur.execute(
+                """
+                SELECT schemaname, matviewname, ispopulated
+                  FROM pg_matviews
+                 WHERE schemaname <> ALL(%s)
+                   AND schemaname NOT LIKE 'pg\\_%%' ESCAPE '\\'
+                   AND schemaname NOT LIKE '\\_timescaledb\\_%%' ESCAPE '\\'
+                 ORDER BY schemaname, matviewname;
+                """,
+                (list(INTERNAL_SCHEMAS),),
+            )
+            materialized_views = cur.fetchall()
+            print(f"\nMaterialized views: {len(materialized_views)}")
+            for schema, name, populated in materialized_views:
+                print(f"  {schema}.{name}: populated={populated}")
 
-            # 5. Materialized Views
-            print("--- Materialized Views ---")
-            cur.execute("""
-                SELECT schemaname, matviewname, ispopulated 
-                FROM pg_matviews 
-                WHERE schemaname NOT LIKE 'pg_%' AND schemaname NOT LIKE '_timescaledb_%'
-                ORDER BY schemaname, matviewname;
-            """)
-            mvs = cur.fetchall()
-            for s, name, pop in mvs:
-                print(f"  • {s}.{name:<30} (populated: {pop})")
-            print()
+            cur.execute(
+                """
+                SELECT table_schema, table_name
+                  FROM information_schema.tables
+                 WHERE table_type = 'BASE TABLE'
+                   AND table_schema <> ALL(%s)
+                   AND table_schema NOT LIKE 'pg\\_%%' ESCAPE '\\'
+                   AND table_schema NOT LIKE '\\_timescaledb\\_%%' ESCAPE '\\'
+                 ORDER BY table_schema, table_name;
+                """,
+                (list(INTERNAL_SCHEMAS),),
+            )
+            tables = cur.fetchall()
+            if assert_empty:
+                for schema, table in tables:
+                    cur.execute(
+                        psql.SQL("SELECT EXISTS (SELECT 1 FROM {}.{} LIMIT 1)").format(
+                            psql.Identifier(schema), psql.Identifier(table)
+                        )
+                    )
+                    if cur.fetchone()[0]:
+                        failures.append(f"{schema}.{table}")
+                for schema, name, populated in materialized_views:
+                    if populated:
+                        cur.execute(
+                            psql.SQL("SELECT EXISTS (SELECT 1 FROM {}.{} LIMIT 1)").format(
+                                psql.Identifier(schema), psql.Identifier(name)
+                            )
+                        )
+                        if cur.fetchone()[0]:
+                            failures.append(f"{schema}.{name} (materialized view)")
+                if failures:
+                    print("\nNon-empty application relations:")
+                    for qualified_name in failures:
+                        print(f"  {qualified_name}")
+                else:
+                    print(
+                        f"\nEmpty-data check passed: {len(tables)} tables and "
+                        f"{len(materialized_views)} materialized views contain no rows."
+                    )
 
-            # 6. Seed Data Summary
-            print("--- Seed Records Summary ---")
-            tables_to_check = [
-                ("canonical", "currency"),
-                ("canonical", "venue"),
-                ("canonical", "source"),
-                ("canonical", "metric_definition"),
-                ("core", "moeda"),
-                ("core", "fuso_horario"),
-                ("core", "bolsa"),
-                ("market", "benchmark"),
-                ("analytics", "tag"),
-                ("system", "oauth_provider"),
-            ]
-            for schema, table in tables_to_check:
-                try:
-                    cur.execute(f'SELECT count(*) FROM "{schema}"."{table}";')
-                    cnt = cur.fetchone()[0]
-                    print(f"  • {schema}.{table:<25}: {cnt:>4} rows")
-                except Exception:
-                    print(f"  • {schema}.{table:<25}: table not found")
+    return not failures
 
-            # 7. Analysis Coverage v3.3 Objects & Extensions
-            print("\n--- Coverage v3.3 Additions ---")
-            v33_tables = [
-                ("canonical", "government_bond_quote"),
-                ("asset_details", "mercado_imobiliario_indicador"),
-                ("canonical", "news_article"),
-                ("canonical", "news_article_instrument"),
-                ("analytics", "valuation"),
-                ("analytics", "score_eixo"),
-                ("canonical", "insider_transaction"),
-                ("canonical", "institutional_holding"),
-                ("asset_details", "etf_composicao"),
-            ]
-            for schema, name in v33_tables:
-                cur.execute(
-                    "SELECT count(*) FROM information_schema.tables WHERE table_schema = %s AND table_name = %s;",
-                    (schema, name)
-                )
-                exists = cur.fetchone()[0] > 0
-                status = "✓ Found" if exists else "✗ Missing"
-                print(f"  • {schema}.{name:<33}: {status}")
 
-            v33_columns = [
-                ("canonical", "fund_profile", "management_fee"),
-                ("canonical", "fund_profile", "performance_fee"),
-                ("canonical", "fund_profile", "benchmark"),
-                ("asset_details", "detalhe_fii", "management_fee"),
-                ("asset_details", "detalhe_fii", "taxa_total"),
-                ("canonical", "fund_holding", "etf_instrument_id"),
-                ("canonical", "metric_definition", "higher_is_better"),
-            ]
-            print("\n--- Coverage v3.3 Column Extensions ---")
-            for schema, table, col in v33_columns:
-                cur.execute(
-                    "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s AND table_name = %s AND column_name = %s;",
-                    (schema, table, col)
-                )
-                exists = cur.fetchone()[0] > 0
-                status = "✓ Found" if exists else "✗ Missing"
-                print(f"  • {schema}.{table}.{col:<25}: {status}")
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Read-only fin-db schema inventory.")
+    parser.add_argument("--url", default=os.environ.get("DATABASE_URL"), help="PostgreSQL connection URL")
+    parser.add_argument("--assert-empty", action="store_true", help="Check every application table and materialized view for rows")
+    args = parser.parse_args()
+    try:
+        return 0 if run_healthcheck(args.url, args.assert_empty) else 1
+    except Exception as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
 
-            # 8. REA Coverage v3.4 (12 Sites Reverse Engineering) Objects & Extensions
-            print("\n--- REA Coverage v3.4 (12 Sites) New Tables ---")
-            v34_tables = [
-                ("core", "instituicao_diretoria_socios"),
-                ("core", "administrador_companhia"),
-                ("core", "remuneracao_administradores"),
-                ("market", "programa_recompra"),
-                ("market", "negociacao_mensal_modalidade"),
-                ("market", "fluxo_opcoes"),
-                ("asset_details", "fii_imovel"),
-                ("asset_details", "fii_imovel_participacao"),
-                ("asset_details", "fii_transacao_venda_imovel"),
-                ("asset_details", "fii_transacao_locacao_imovel"),
-                ("asset_details", "fii_cronograma_contratos"),
-                ("asset_details", "fii_cri_carteira"),
-                ("asset_details", "fii_demonstrativo_trimestral"),
-                ("asset_details", "fii_avaliacao_gestora"),
-                ("analytics", "receita_segmento_negocio"),
-                ("analytics", "receita_geografia"),
-                ("analytics", "kpi_operacional_emissor"),
-                ("analytics", "padrao_candlestick"),
-                ("analytics", "previsao_consenso_analistas"),
-                ("analytics", "checklist_avaliacao_ativo"),
-                ("analytics", "indicador_media_setorial"),
-            ]
-            for schema, name in v34_tables:
-                cur.execute(
-                    "SELECT count(*) FROM information_schema.tables WHERE table_schema = %s AND table_name = %s;",
-                    (schema, name)
-                )
-                exists = cur.fetchone()[0] > 0
-                status = "✓ Found" if exists else "✗ Missing"
-                print(f"  • {schema}.{name:<33}: {status}")
-                if not exists:
-                    sys.exit(1)
-
-            v34_columns = [
-                ("core", "emissor_companhia", "segmento_listagem"),
-                ("core", "emissor_companhia", "free_float_on"),
-                ("core", "emissor_companhia", "reclame_aqui_nota"),
-                ("core", "instituicao_financeira", "nota_geral"),
-                ("market", "aluguel_acoes", "taxa_tomador_media"),
-                ("market", "provento", "mes_referencia"),
-                ("market", "subscricao_acao", "proporcao_sobras_pct"),
-                ("asset_details", "opcao_detalhe", "rho"),
-                ("asset_details", "detalhe_fii", "cap_rate_medio"),
-                ("asset_details", "historico_patrimonio_fii", "passivo_aquisicao_imoveis"),
-                ("asset_details", "rentabilidade_fii", "dy_patrimonial"),
-                ("asset_details", "mercado_imobiliario_indicador", "absorcao_liquida_m2"),
-                ("asset_details", "fundo_investimento", "cvm_175_tipo_entidade"),
-                ("asset_details", "fundo_carteira", "valor_comprado_mes"),
-                ("asset_details", "etf_detalhe", "taxa_administracao_total"),
-                ("canonical", "government_bond_quote", "anbima_indicative_rate"),
-                ("asset_details", "criptomoeda_detalhe", "tvl"),
-                ("analytics", "demonstrativo_financeiro", "fluxo_caixa_livre"),
-                ("analytics", "indicador_fundamentalista", "peg_ratio"),
-                ("analytics", "historico_risco", "alfa_jensen"),
-                ("analytics", "indicador_tecnico", "suporte_4"),
-                ("analytics", "preco_alvo", "qtd_strong_buy"),
-                ("canonical", "disclosure_document", "ai_summary"),
-            ]
-            print("\n--- REA Coverage v3.4 Column Extensions ---")
-            for schema, table, col in v34_columns:
-                cur.execute(
-                    "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s AND table_name = %s AND column_name = %s;",
-                    (schema, table, col)
-                )
-                exists = cur.fetchone()[0] > 0
-                status = "✓ Found" if exists else "✗ Missing"
-                print(f"  • {schema}.{table}.{col:<25}: {status}")
-                if not exists:
-                    sys.exit(1)
-
-            # 9. Status Invest Coverage v3.6 Extensions
-            print("\n--- Status Invest Coverage v3.6 Column Extensions ---")
-            v36_columns = [
-                ("asset_details", "detalhe_fii", "ultimo_dividendo"),
-                ("asset_details", "detalhe_fii", "valor_patrimonial_cota"),
-                ("asset_details", "detalhe_fii", "pvp"),
-                ("asset_details", "detalhe_fii", "dividend_yield"),
-                ("asset_details", "detalhe_fii", "percentual_em_caixa"),
-                ("asset_details", "detalhe_fii", "cagr_dividendos_3a"),
-                ("asset_details", "detalhe_fii", "cagr_valor_cota_3a"),
-                ("asset_details", "detalhe_fii", "patrimonio_liquido"),
-                ("asset_details", "detalhe_fii", "quantidade_cotas"),
-            ]
-            for schema, table, col in v36_columns:
-                cur.execute(
-                    "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s AND table_name = %s AND column_name = %s;",
-                    (schema, table, col)
-                )
-                exists = cur.fetchone()[0] > 0
-                status = "✓ Found" if exists else "✗ Missing"
-                print(f"  • {schema}.{table}.{col:<25}: {status}")
-                if not exists:
-                    sys.exit(1)
-
-    print("\n" + "=" * 65)
-    print("           HEALTHCHECK COMPLETED SUCCESSFULLY")
-    print("=" * 65)
 
 if __name__ == "__main__":
-    url = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_URL
-    run_healthcheck(url)
+    raise SystemExit(main())

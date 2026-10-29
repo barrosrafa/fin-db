@@ -160,13 +160,13 @@ $$;
 
 -- 8. View Operacional: Saúde da Autonomia e Freshness da Ingestão
 CREATE OR REPLACE VIEW ingestion.v_pipeline_health_summary AS
-SELECT 
+SELECT
     p.dataset_name,
     p.source_name,
     p.expected_delay_min,
     MAX(c.last_confirmed_at) AS last_success_at,
     ROUND(EXTRACT(EPOCH FROM (NOW() - MAX(c.last_confirmed_at))) / 60) AS minutes_since_last_success,
-    CASE 
+    CASE
         WHEN MAX(c.last_confirmed_at) IS NULL THEN 'SEM_EXECUCAO'
         WHEN EXTRACT(EPOCH FROM (NOW() - MAX(c.last_confirmed_at))) / 60 > p.expected_delay_min THEN 'ATRASADO'
         ELSE 'SAUDAVEL'
@@ -185,48 +185,48 @@ GROUP BY p.dataset_name, p.source_name, p.expected_delay_min;
 -- Torna CNPJ anulável para emissores internacionais ou pendentes de confirmação
 ALTER TABLE core.emissor_companhia ALTER COLUMN cnpj DROP NOT NULL;
 ALTER TABLE core.emissor_companhia ADD COLUMN IF NOT EXISTS status_cnpj VARCHAR(30) DEFAULT 'CONFIRMADO';
-CREATE UNIQUE INDEX IF NOT EXISTS idx_emissor_nome_sem_cnpj 
-    ON core.emissor_companhia(nome_empresarial) 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_emissor_nome_sem_cnpj
+    ON core.emissor_companhia(nome_empresarial)
     WHERE cnpj IS NULL;
 
--- 10. Seeds Iniciais de Políticas e Fontes
-INSERT INTO ingestion.source_policy (source_name, requests_per_minute, max_concurrency, failure_threshold, cooldown_seconds)
-VALUES 
-    ('b3', 30, 2, 5, 300),
-    ('cvm', 60, 4, 5, 180),
-    ('bcb', 60, 3, 5, 120),
-    ('anbima', 30, 2, 5, 300),
-    ('status_invest', 20, 2, 4, 600),
-    ('investidor10', 20, 2, 4, 600),
-    ('fundamentei', 20, 2, 4, 600),
-    ('fundamentus', 30, 2, 4, 300),
-    ('clube_fii', 25, 2, 4, 300),
-    ('funds_explorer', 20, 2, 4, 300),
-    ('fiis_com_br', 25, 2, 4, 300),
-    ('mais_retorno', 25, 2, 4, 300),
-    ('analise_de_acoes', 25, 2, 4, 300),
-    ('brick360', 25, 2, 4, 300),
-    ('advfn', 20, 2, 4, 300),
-    ('etfs_brasil', 30, 2, 4, 300)
-ON CONFLICT (source_name) DO UPDATE SET
-    requests_per_minute = EXCLUDED.requests_per_minute,
-    max_concurrency = EXCLUDED.max_concurrency,
-    cooldown_seconds = EXCLUDED.cooldown_seconds;
+-- 10. Estruturas das políticas de ingestão e fontes
 
-INSERT INTO ingestion.ingestion_policy (policy_id, dataset_name, source_name, calendar_type, cron_expression, priority, expected_delay_min)
-VALUES 
-    ('b3_daily_quotes', 'cotacao_diaria', 'b3', 'B3_TRADING_DAYS', '0 19 * * 1-5', 2, 180),
-    ('b3_instrument_cad', 'cadastro_instrumento', 'b3', 'CALENDAR_DAYS', '0 22 * * 1-5', 4, 1440),
-    ('cvm_quarterly_dfp', 'demonstrativo_financeiro', 'cvm', 'BUSINESS_DAYS', '0 7,19 * * 1-5', 3, 720),
-    ('cvm_fii_monthly', 'informe_mensal_fii', 'cvm', 'BUSINESS_DAYS', '0 9 * * 1-5', 3, 720),
-    ('cvm_funds_daily', 'cota_fundo_investimento', 'cvm', 'BUSINESS_DAYS', '30 8 * * 2-6', 3, 360),
-    ('bcb_macro_series', 'serie_macro', 'bcb', 'BUSINESS_DAYS', '0 14,18,20 * * 1-5', 2, 240),
-    ('anbima_indicativos', 'taxa_anbima', 'anbima', 'BUSINESS_DAYS', '0 18 * * 1-5', 3, 360),
-    ('etfs_brasil_taxas', 'etf_taxas_nav', 'etfs_brasil', 'B3_TRADING_DAYS', '0 20 * * 1-5', 4, 720),
-    ('intraday_quotes_fast', 'cotacao_intraday', 'b3', 'B3_TRADING_DAYS', '*/15 10-18 * * 1-5', 1, 30)
-ON CONFLICT (policy_id) DO UPDATE SET
-    dataset_name = EXCLUDED.dataset_name,
-    source_name = EXCLUDED.source_name,
-    cron_expression = EXCLUDED.cron_expression,
-    priority = EXCLUDED.priority,
-    expected_delay_min = EXCLUDED.expected_delay_min;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                ;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                    ;

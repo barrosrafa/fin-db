@@ -7,6 +7,9 @@ CREATE SCHEMA IF NOT EXISTS canonical;
 CREATE SCHEMA IF NOT EXISTS raw;
 CREATE SCHEMA IF NOT EXISTS analytics;
 
+CREATE SEQUENCE IF NOT EXISTS canonical.metric_observation_metric_observation_id_seq;
+CREATE SEQUENCE IF NOT EXISTS canonical.price_observation_price_observation_id_seq;
+
 -- 1. ENUMS
 DO $$ BEGIN
     CREATE TYPE canonical.asset_class AS ENUM ('EQUITY', 'FII', 'FIAGRO', 'FI_INFRA', 'FUND', 'ETF', 'BDR', 'REIT', 'OPTION', 'GOVERNMENT_BOND', 'FIXED_INCOME', 'CRYPTO', 'INDEX', 'FUTURE', 'OTHER');

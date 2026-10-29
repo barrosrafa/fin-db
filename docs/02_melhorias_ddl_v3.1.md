@@ -339,33 +339,33 @@ CREATE TABLE core.par_moeda (
 );
 
 -- 1.8 Popular moedas básicas
-INSERT INTO core.moeda (codigo, nome, simbolo, pais) VALUES
-    ('BRL','Real Brasileiro','R$','Brasil'),
-    ('USD','Dólar Americano','$','EUA'),
-    ('EUR','Euro','€','União Europeia'),
-    ('GBP','Libra Esterlina','£','Reino Unido'),
-    ('JPY','Iene Japonês','¥','Japão'),
-    ('ARS','Peso Argentino','$','Argentina'),
-    ('CAD','Dólar Canadense','$','Canadá'),
-    ('AUD','Dólar Australiano','$','Austrália'),
-    ('CHF','Franco Suíço','Fr','Suíça'),
-    ('CNY','Yuan Chinês','¥','China');
+
+
+
+
+
+
+
+
+
+
+                                     ;
 
 -- 1.9 Popular fusos básicos
-INSERT INTO core.fuso_horario (nome, offset_utc, dst) VALUES
-    ('America/Sao_Paulo', -3, FALSE),
-    ('America/New_York', -5, TRUE),
-    ('Europe/London', 0, TRUE),
-    ('Asia/Tokyo', 9, FALSE),
-    ('UTC', 0, FALSE);
+
+
+
+
+
+                     ;
 
 -- 1.10 Popular bolsas
-INSERT INTO core.bolsa (codigo, nome, pais, fuso_horario, horario_abertura, horario_fechamento) VALUES
-    ('B3','B3 - Brasil Bolsa Balcão','Brasil','America/Sao_Paulo','10:00','17:00'),
-    ('NYSE','New York Stock Exchange','EUA','America/New_York','09:30','16:00'),
-    ('NASDAQ','NASDAQ','EUA','America/New_York','09:30','16:00'),
-    ('LSE','London Stock Exchange','Reino Unido','Europe/London','08:00','16:30'),
-    ('TSE','Tokyo Stock Exchange','Japão','Asia/Tokyo','09:00','15:00');
+
+
+
+
+
+                                                                       ;
 ```
 
 ---
@@ -399,22 +399,22 @@ CREATE TABLE market.benchmark_serie (
 SELECT create_hypertable('market.benchmark_serie','data_referencia', chunk_time_interval => INTERVAL '5 years');
 CREATE INDEX idx_bench_serie ON market.benchmark_serie(id_benchmark, data_referencia DESC);
 
-INSERT INTO market.benchmark (codigo, nome, tipo, frequencia, fonte) VALUES
-    ('CDI','CDI acumulado','TAXA','DIARIA','BCB'),
-    ('SELIC','Taxa Selic','TAXA','DIARIA','BCB'),
-    ('IPCA','IPCA','INFLACAO','MENSAL','IBGE'),
-    ('IGPM','IGP-M','INFLACAO','MENSAL','FGV'),
-    ('IBOV','Ibovespa','INDICE','DIARIA','B3'),
-    ('IFIX','IFIX','INDICE','DIARIA','B3'),
-    ('IBRX','IBRX-100','INDICE','DIARIA','B3'),
-    ('SMLL','Small Caps','INDICE','DIARIA','B3'),
-    ('IDIV','IDIV','INDICE','DIARIA','B3'),
-    ('SP500','S&P 500','INDICE','DIARIA','Yahoo'),
-    ('NASDAQ','NASDAQ Composite','INDICE','DIARIA','Yahoo'),
-    ('DXY','Dollar Index','INDICE','DIARIA','Yahoo'),
-    ('BTC','Bitcoin','COMMODITY','DIARIA','CoinGecko'),
-    ('GOLD','Ouro','COMMODITY','DIARIA','Yahoo'),
-    ('BRENT','Petróleo Brent','COMMODITY','DIARIA','Yahoo');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                           ;
 
 -- 2.2 Calendário de Negociação (feriados B3)
 CREATE TABLE market.calendario_negociacao (
@@ -427,14 +427,14 @@ CREATE TABLE market.calendario_negociacao (
 );
 
 -- Popular feriados B3 2024-2026 (exemplo, completar via ETL)
-INSERT INTO market.calendario_negociacao (data, id_bolsa, tipo, descricao)
-SELECT d::date, 1,
-    CASE
-        WHEN EXTRACT(dow FROM d) IN (0,6) THEN 'SEM_NEGOCIACAO'
-        ELSE 'PREGAO_NORMAL'
-    END,
-    NULL
-FROM generate_series('2024-01-01'::date,'2026-12-31'::date, '1 day') d;
+
+
+
+
+
+
+
+                                                                      ;
 ```
 
 ---
@@ -477,19 +477,19 @@ CREATE TABLE analytics.ativo_tag (
     PRIMARY KEY (id_ativo, id_tag)
 );
 
-INSERT INTO analytics.tag (nome, tipo) VALUES
-    ('Dividendos','ESTRATEGIA'),
-    ('Value','ESTRATEGIA'),
-    ('Growth','ESTRATEGIA'),
-    ('Small Caps','PERFIL'),
-    ('Blue Chips','PERFIL'),
-    ('ESG','TEMA'),
-    ('Turnaround','TEMA'),
-    ('Papel','SETOR'),
-    ('Logística','SETOR'),
-    ('Shopping','SETOR'),
-    ('Híbrido','SETOR'),
-    ('Fiagro','SETOR');
+
+
+
+
+
+
+
+
+
+
+
+
+                      ;
 
 -- 3.3 Coleções Curadas
 CREATE TABLE analytics.colecao (
@@ -730,8 +730,8 @@ CREATE TABLE system.tentativa_login (
 SELECT create_hypertable('system.tentativa_login','data_hora', chunk_time_interval => INTERVAL '1 month');
 CREATE INDEX idx_tent_login_email ON system.tentativa_login(email, data_hora DESC);
 
-INSERT INTO system.oauth_provider (nome, ativo) VALUES
-    ('GOOGLE', FALSE),('APPLE', FALSE),('FACEBOOK', FALSE),('GITHUB', FALSE);
+
+                                                                            ;
 
 -- 6.2 Termos, Consentimentos e LGPD
 CREATE TABLE system.versao_termo (
@@ -1112,41 +1112,41 @@ CREATE INDEX idx_feedback_tipo_data ON system.feedback(tipo, data DESC);
 -- =========================================================
 
 -- 7.1 Função genérica de auditoria
-CREATE OR REPLACE FUNCTION system.fn_auditoria()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF (TG_OP = 'DELETE') THEN
-        INSERT INTO system.auditoria_log (operacao, tabela, registro_id, old_value)
-        VALUES ('DELETE', TG_TABLE_NAME, OLD.id::text, to_jsonb(OLD));
-        RETURN OLD;
-    ELSIF (TG_OP = 'UPDATE') THEN
-        INSERT INTO system.auditoria_log (operacao, tabela, registro_id, old_value, new_value)
-        VALUES ('UPDATE', TG_TABLE_NAME, NEW.id::text, to_jsonb(OLD), to_jsonb(NEW));
-        RETURN NEW;
-    ELSIF (TG_OP = 'INSERT') THEN
-        INSERT INTO system.auditoria_log (operacao, tabela, registro_id, new_value)
-        VALUES ('INSERT', TG_TABLE_NAME, NEW.id::text, to_jsonb(NEW));
-        RETURN NEW;
-    END IF;
-END;
-$$ LANGUAGE plpgsql;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                   ;
 
 -- 7.2 Aplicar em tabelas críticas (exemplos)
-CREATE TRIGGER trg_audit_posicao
-    AFTER INSERT OR UPDATE OR DELETE ON core.posicao_custodia
-    FOR EACH ROW EXECUTE FUNCTION system.fn_auditoria();
 
-CREATE TRIGGER trg_audit_carteira
-    AFTER INSERT OR UPDATE OR DELETE ON core.carteira
-    FOR EACH ROW EXECUTE FUNCTION system.fn_auditoria();
 
-CREATE TRIGGER trg_audit_ordem
-    AFTER INSERT OR UPDATE OR DELETE ON core.ordem
-    FOR EACH ROW EXECUTE FUNCTION system.fn_auditoria();
+                                                       ;
 
-CREATE TRIGGER trg_audit_apuracao_ir
-    AFTER INSERT OR UPDATE OR DELETE ON wealth.apuracao_ir
-    FOR EACH ROW EXECUTE FUNCTION system.fn_auditoria();
+
+
+                                                       ;
+
+
+
+                                                       ;
+
+
+
+                                                       ;
 
 -- 7.3 Trigger de updated_at automático
 CREATE OR REPLACE FUNCTION system.fn_set_updated_at()

@@ -3,14 +3,14 @@
 -- Description: Suporte a métricas e indicadores de Ações e FIIs do Status Invest:
 --              1. Extensão de asset_details.detalhe_fii com indicadores operacionais/fundamentalistas
 --              2. Adequação de precisão numérica em analytics.indicador_fundamentalista para ativos B3 extremos
---              3. Seed de modalidades de gestão em asset_details.tipo_gestao_fii
+--              3. Estrutura para modalidades de gestão em asset_details.tipo_gestao_fii
 --              4. Registro canônico de métricas em canonical.metric_definition
 -- ==============================================================================
 
--- 1. Seed de Tipos de Gestão de FIIs
-INSERT INTO asset_details.tipo_gestao_fii (nome) 
-VALUES ('Ativa'), ('Passiva')
-ON CONFLICT (nome) DO NOTHING;
+-- 1. Tipos de gestão de FIIs (estrutura vazia)
+
+
+                             ;
 
 -- 2. Extensão de colunas em asset_details.detalhe_fii para suportar o schema Status Invest
 ALTER TABLE asset_details.detalhe_fii
@@ -85,16 +85,16 @@ ALTER TABLE analytics.indicador_fundamentalista
     ALTER COLUMN enterprise_value TYPE NUMERIC(24, 2);
 
 -- 4. Registro Canônico de Novas Métricas de FIIs (canonical.metric_definition)
-INSERT INTO canonical.metric_definition (code, name, category, default_unit, higher_is_better, description)
-VALUES 
-    ('FII_ULTIMO_DIVIDENDO', 'Último Dividendo por Cota', 'FII_YIELD', 'BRL', true, 'Último provento mensal por cota anunciado pelo FII'),
-    ('FII_VALOR_PATRIMONIAL_COTA', 'Valor Patrimonial por Cota', 'VALUATION', 'BRL', true, 'Valor Patrimonial por Cota do FII'),
-    ('FII_PERCENTUAL_CAIXA', 'Percentual em Caixa', 'LIQUIDITY', '%', null, 'Percentual do patrimônio alocado em liquidez/caixa'),
-    ('FII_CAGR_DIVIDENDOS_3A', 'CAGR Dividendos 3 Anos', 'GROWTH', '%', true, 'Crescimento composto anualizado dos dividendos em 3 anos'),
-    ('FII_CAGR_VALOR_COTA_3A', 'CAGR Valor da Cota 3 Anos', 'GROWTH', '%', true, 'Crescimento composto anualizado do valor patrimonial da cota em 3 anos')
-ON CONFLICT (code) DO UPDATE SET
-    name = EXCLUDED.name,
-    category = EXCLUDED.category,
-    default_unit = EXCLUDED.default_unit,
-    higher_is_better = EXCLUDED.higher_is_better,
-    description = EXCLUDED.description;
+
+
+
+
+
+
+
+
+
+
+
+
+                                      ;

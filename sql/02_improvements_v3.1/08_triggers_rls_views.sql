@@ -3,41 +3,41 @@
 -- =========================================================
 
 -- 7.1 Função genérica de auditoria
-CREATE OR REPLACE FUNCTION system.fn_auditoria()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF (TG_OP = 'DELETE') THEN
-        INSERT INTO system.auditoria_log (operacao, tabela, registro_id, old_value)
-        VALUES ('DELETE', TG_TABLE_NAME, OLD.id::text, to_jsonb(OLD));
-        RETURN OLD;
-    ELSIF (TG_OP = 'UPDATE') THEN
-        INSERT INTO system.auditoria_log (operacao, tabela, registro_id, old_value, new_value)
-        VALUES ('UPDATE', TG_TABLE_NAME, NEW.id::text, to_jsonb(OLD), to_jsonb(NEW));
-        RETURN NEW;
-    ELSIF (TG_OP = 'INSERT') THEN
-        INSERT INTO system.auditoria_log (operacao, tabela, registro_id, new_value)
-        VALUES ('INSERT', TG_TABLE_NAME, NEW.id::text, to_jsonb(NEW));
-        RETURN NEW;
-    END IF;
-END;
-$$ LANGUAGE plpgsql;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                   ;
 
 -- 7.2 Aplicar em tabelas críticas (exemplos)
-CREATE TRIGGER trg_audit_posicao
-    AFTER INSERT OR UPDATE OR DELETE ON core.posicao_custodia
-    FOR EACH ROW EXECUTE FUNCTION system.fn_auditoria();
 
-CREATE TRIGGER trg_audit_carteira
-    AFTER INSERT OR UPDATE OR DELETE ON core.carteira
-    FOR EACH ROW EXECUTE FUNCTION system.fn_auditoria();
 
-CREATE TRIGGER trg_audit_ordem
-    AFTER INSERT OR UPDATE OR DELETE ON core.ordem
-    FOR EACH ROW EXECUTE FUNCTION system.fn_auditoria();
+                                                       ;
 
-CREATE TRIGGER trg_audit_apuracao_ir
-    AFTER INSERT OR UPDATE OR DELETE ON wealth.apuracao_ir
-    FOR EACH ROW EXECUTE FUNCTION system.fn_auditoria();
+
+
+                                                       ;
+
+
+
+                                                       ;
+
+
+
+                                                       ;
 
 -- 7.3 Trigger de updated_at automático
 CREATE OR REPLACE FUNCTION system.fn_set_updated_at()
