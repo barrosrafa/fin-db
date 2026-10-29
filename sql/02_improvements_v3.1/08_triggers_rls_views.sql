@@ -169,6 +169,6 @@ WHERE data_pagamento IS NOT NULL
 GROUP BY id_ativo, mes;
 
 -- [Timescale Cloud Only]: SELECT add_continuous_aggregate_policy('analytics.cagg_provento_mensal',
-    start_offset => INTERVAL '10 years',
-    end_offset   => INTERVAL '1 day',
-    schedule_interval => INTERVAL '1 day');
+--     start_offset => INTERVAL '10 years',
+--     end_offset   => INTERVAL '1 day',
+--     schedule_interval => INTERVAL '1 day');

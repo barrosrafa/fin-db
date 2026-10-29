@@ -89,6 +89,16 @@ def get_applied_migrations(conn):
 
 
 def run_migrations(db_url: str, stages_to_run=None, dry_run: bool = False):
+    if dry_run:
+        # Planning must be offline: no credentials, advisory locks, or ledger writes.
+        for stage_name, stage_path in MIGRATION_STAGES:
+            if stages_to_run and stage_name not in stages_to_run:
+                continue
+            for sql_file in sorted(stage_path.glob("*.sql")):
+                print(f"[DRY-RUN] {stage_name}/{sql_file.name} SHA256={get_file_sha256(sql_file)}")
+        print("OFFLINE DRY RUN COMPLETE: no database connection opened.")
+        return
+
     if not db_url:
         print("ERROR: DATABASE_URL not provided via CLI argument or environment variable.")
         sys.exit(1)
@@ -132,7 +142,7 @@ def run_migrations(db_url: str, stages_to_run=None, dry_run: bool = False):
                     if version_key in applied_map:
                         stored_checksum = applied_map[version_key]
                         if stored_checksum != current_checksum:
-                            print(f"  ⚠ WARNING: Checksum mismatch on {version_key} (drift detected).")
+                            raise RuntimeError(f"Checksum drift for applied migration {version_key}; refusing to reapply historical SQL")
                         else:
                             print(f"  • {sql_file.name} [Already applied ✓]")
                             total_skipped += 1
