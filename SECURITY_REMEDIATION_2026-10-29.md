@@ -1,6 +1,6 @@
 # Correções de segurança do ecossistema FIN — 29/10/2026
 
-Alterações locais preparadas a partir de `auditoria_ecossistema_fin.md`, confrontando os exemplos com o código atual. Nenhum deploy, alteração de dados reais ou migração em produção foi executado.
+Alterações locais preparadas a partir de `auditoria_ecossistema_fin.md`, confrontando os exemplos com o código atual. Ao concluir a validação local, nenhum deploy ou migração em produção havia sido executado. A publicação posteriormente autorizada está registrada na seção final.
 
 ## Resultado por item do anexo
 
@@ -50,3 +50,9 @@ Também corrigidos `/ready` (import de `status` e chamadas incompatíveis com o 
 API: executar `tests/test_audit_hardening.py` com `TEST_REDIS_URL` apontando para Redis descartável. Para `tests/test_audit_postgres.py`, criar banco **fin_audit_test** em PostgreSQL isolado e definir `TEST_POSTGRES_URL=postgresql://.../fin_audit_test`; o papel de preparação precisa criar schema/role. O teste cria e remove seus próprios objetos e usa a migração no repositório irmão `fin`.
 
 Ingestão: executar `tests/test_audit_resilience.py` com `TEST_REDIS_URL` descartável. Sem a variável, os testes reais de Redis são explicitamente ignorados. Nunca apontar estes testes para serviços de produção.
+
+## Publicação autorizada após a validação
+
+Os seis repositórios receberam push em `main`. O frontend `131ae86` foi publicado em produção na Vercel e a API `181cfcd` foi confirmada Live no Render. A migração deste diretório foi aplicada no Neon com índice único válido e registro em `system.schema_migrations`, sem alterar ordens existentes.
+
+O estado detalhado, as evidências e as dependências operacionais pendentes estão no [registro central de publicação](https://github.com/barrosrafa/fin-docs/blob/main/08_AUDITORIAS_TESTES_E_PENTEST/2026-10-29_Remediacao_Seguranca_e_Publicacao.md). Publicar o código da ingestão e os manifests não comprova operação dos workers: o Redis compartilhado e os secrets devem estar configurados e verificados.
