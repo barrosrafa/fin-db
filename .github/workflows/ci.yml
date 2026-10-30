@@ -31,4 +31,4 @@ jobs:
           uv run --python 3.12 --with pglast scripts/validate_sql.py
 
       - name: Prove dry-run remains offline
-        run: uv run --python 3.12 --with "psycopg[binary]" python -m unittest discover -s tests -p 'test_migrate*.py'
+        run: uv run --python 3.12 --with "psycopg[binary]" python -m unittest discover -s tests -v

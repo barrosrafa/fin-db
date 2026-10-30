@@ -7,7 +7,13 @@ import json
 import os
 import sys
 from pathlib import Path
+from collections.abc import Iterable
 from urllib.parse import urlsplit, urlunsplit
+
+try:
+    from common import load_dotenv
+except ModuleNotFoundError:  # pragma: no cover - depends on invocation style
+    from scripts.common import load_dotenv
 
 try:
     import psycopg
@@ -17,18 +23,6 @@ except ImportError:
     sys.exit(1)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-
-
-def load_dotenv(path: Path) -> None:
-    if not path.exists():
-        return
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip("'\""))
-
 
 load_dotenv(REPO_ROOT / ".env")
 
@@ -67,7 +61,7 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def migration_files(stages=None):
+def migration_files(stages: Iterable[str] | None = None):
     for stage_name, stage_path in MIGRATION_STAGES:
         if stages and stage_name not in stages:
             continue
