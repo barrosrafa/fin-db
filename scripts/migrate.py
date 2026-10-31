@@ -53,6 +53,7 @@ MIGRATION_STAGES = [
     ("18_empty_materialized_views", REPO_ROOT / "sql/18_empty_materialized_views"),
     ("19_merge_base_b", REPO_ROOT / "sql/19_merge_base_b"),
     ("20_scheduled_engine_v4.5", REPO_ROOT / "sql/20_scheduled_engine_v4.5"),
+    ("18_runtime_security", REPO_ROOT / "sql/18_runtime_security"),
 ]
 
 LOCK_KEY = 742198273
@@ -150,6 +151,10 @@ def _has_executable_sql(source: str) -> bool:
 
 def run_migrations(db_url: str, stages=None, dry_run: bool = False) -> tuple[int, int]:
     files = list(migration_files(stages))
+    for stage_name, path in files:
+        if ('manual' in stage_name.lower() or 'manual' in path.stem.lower()
+                or '-- execution: manual' in path.read_text()[:1000].lower()):
+            raise RuntimeError(f'Manual migration forbidden in automatic runner: {stage_name}/{path.name}')
     if dry_run:
         for stage_name, path in files:
             print(f"[DRY-RUN] {stage_name}/{path.name} SHA256={file_sha256(path)}")
@@ -159,8 +164,10 @@ def run_migrations(db_url: str, stages=None, dry_run: bool = False) -> tuple[int
     if not db_url:
         raise ValueError("DATABASE_URL is required (or pass --url).")
 
+    if urlsplit(db_url).path == '/fin_cms':
+        raise ValueError('Financial migrations cannot target the CMS database')
     ensure_timescaledb(db_url)
-    conn = psycopg.connect(db_url, autocommit=True)
+    conn = psycopg.connect(direct_connection_url(db_url), autocommit=True, connect_timeout=15)
     applied = skipped = 0
     lock_acquired = False
     try:
@@ -169,6 +176,20 @@ def run_migrations(db_url: str, stages=None, dry_run: bool = False) -> tuple[int
             lock_acquired = True
 
         history = ensure_history_schema(conn)
+        # Read both ledgers: legacy deployments and the current schema-only runner.
+        with conn.cursor() as cur:
+            cur.execute("SELECT to_regclass('system.schema_migrations')")
+            if cur.fetchone()[0]:
+                cur.execute('SELECT version,checksum FROM system.schema_migrations')
+                for version, checksum in cur.fetchall():
+                    if version in history and history[version] != checksum:
+                        raise RuntimeError('Conflicting migration ledgers; reconcile before applying')
+                    history.setdefault(version, checksum)
+        # Validate ALL selected applied checksums before applying the first pending file.
+        for stage_name, path in files:
+            key = f"{stage_name}/{path.name}"
+            if key in history and history[key] != file_sha256(path):
+                raise RuntimeError(f'Checksum drift for applied migration {key}; refusing to replay changed SQL.')
         for stage_name, path in files:
             key = f"{stage_name}/{path.name}"
             checksum = file_sha256(path)
@@ -198,7 +219,7 @@ def run_migrations(db_url: str, stages=None, dry_run: bool = False) -> tuple[int
                         cur.execute(source)
                         write_history_comment(cur, next_history)
             except Exception as exc:
-                raise RuntimeError(f"Migration failed and only this file was rolled back: {key}: {exc}") from exc
+                raise RuntimeError(f"Migration failed and only this file was rolled back: {key} ({type(exc).__name__})") from None
             history = next_history
             applied += 1
             print("[OK]")
@@ -219,12 +240,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Apply fin-db schema migrations (DDL only).")
     parser.add_argument("--url", default=os.environ.get("DATABASE_URL"), help="PostgreSQL connection URL")
     parser.add_argument("--stage", choices=[name for name, _ in MIGRATION_STAGES])
-    parser.add_argument("--dry-run", action="store_true", help="List planned migrations without connecting")
+    parser.add_argument("--dry-run", "--plan", action="store_true", help="List planned migrations without connecting")
     args = parser.parse_args()
     try:
         run_migrations(args.url, [args.stage] if args.stage else None, args.dry_run)
     except Exception as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        print(f"ERROR: {type(exc).__name__}; inspect sanitized migration diagnostics", file=sys.stderr)
         return 1
     return 0
 
