@@ -40,3 +40,30 @@ class OfflinePlanTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class MigrationPreflightTests(unittest.TestCase):
+    def test_drift_in_later_file_prevents_earlier_pending_migration(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / '01_pending.sql').write_text('SELECT 917234;')
+            (root / '02_applied.sql').write_text('SELECT 2;')
+            conn = MagicMock()
+            conn.__enter__.return_value = conn
+            with patch.object(migrate, 'MIGRATION_STAGES', [('automatic', root)]), \
+                 patch.object(migrate.psycopg, 'connect', return_value=conn), \
+                 patch.object(migrate, 'ensure_migration_table'), \
+                 patch.object(migrate, 'get_applied_migrations', return_value={'automatic/02_applied.sql': 'drift'}):
+                with self.assertRaisesRegex(RuntimeError, 'Checksum drift'):
+                    migrate.run_migrations('local-test-only')
+            statements = str(conn.cursor.return_value.__enter__.return_value.execute.call_args_list)
+            self.assertNotIn('917234', statements)
+
+    def test_manual_annotation_is_rejected_without_connection_even_in_plan(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)
+            (path / '01_change.sql').write_text('-- execution: manual\nSELECT 1;')
+            with patch.object(migrate, 'MIGRATION_STAGES', [('automatic', path)]), \
+                 patch.object(migrate.psycopg, 'connect') as connect:
+                with self.assertRaisesRegex(RuntimeError, 'Manual migration forbidden'):
+                    migrate.run_migrations('', dry_run=True)
+            connect.assert_not_called()

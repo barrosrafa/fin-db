@@ -34,10 +34,7 @@ if env_file.exists():
     except Exception:
         pass
 
-DEFAULT_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql://neondb_owner:@ep-ancient-art-b5mstl4r-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require"
-)
+DEFAULT_URL = os.environ.get("DATABASE_URL", "")
 
 MIGRATION_STAGES = [
     ("00_baseline", REPO_ROOT / "sql" / "00_baseline"),
@@ -56,6 +53,9 @@ MIGRATION_STAGES = [
     ("13_billing_and_auth_v4.1", REPO_ROOT / "sql" / "13_billing_and_auth_v4.1"),
     ("14_ingestion_control_and_data_quality_v4.2", REPO_ROOT / "sql" / "14_ingestion_control_and_data_quality_v4.2"),
     ("15_dbt_raw_landing_views_v4.3", REPO_ROOT / "sql" / "15_dbt_raw_landing_views_v4.3"),
+    ("16_market_data_quality_v4.4", REPO_ROOT / "sql" / "16_market_data_quality_v4.4"),
+    ("17_scheduled_engine_v4.5", REPO_ROOT / "sql" / "17_scheduled_engine_v4.5"),
+    ("18_runtime_security", REPO_ROOT / "sql" / "18_runtime_security"),
 ]
 
 LOCK_KEY = 742198273  # Deterministic 32-bit int for pg_advisory_lock
@@ -89,6 +89,15 @@ def get_applied_migrations(conn):
 
 
 def run_migrations(db_url: str, stages_to_run=None, dry_run: bool = False):
+    # Manual files cannot enter either an automatic plan or an automatic apply.
+    for stage_name, stage_path in MIGRATION_STAGES:
+        if stages_to_run and stage_name not in stages_to_run:
+            continue
+        for path in stage_path.glob("*.sql"):
+            header = path.read_text(encoding="utf-8")[:1000].lower()
+            if ("manual" in stage_name.lower() or "manual" in path.stem.lower()
+                    or "-- execution: manual" in header):
+                raise RuntimeError(f"Manual migration forbidden in automatic runner: {stage_name}/{path.name}")
     if dry_run:
         # Planning must be offline: no credentials, advisory locks, or ledger writes.
         for stage_name, stage_path in MIGRATION_STAGES:
@@ -108,18 +117,32 @@ def run_migrations(db_url: str, stages_to_run=None, dry_run: bool = False):
     print("=" * 70)
 
     try:
-        conn = psycopg.connect(db_url)
+        conn = psycopg.connect(db_url, autocommit=True, connect_timeout=15)
     except Exception as e:
-        print(f"ERROR: Failed to connect to database: {e}")
+        print(f"ERROR: Failed to connect to database ({type(e).__name__})")
         sys.exit(1)
 
     with conn:
+        with conn.cursor() as domain_cursor:
+            domain_cursor.execute("SELECT current_database()")
+            if domain_cursor.fetchone()[0] == "fin_cms":
+                raise RuntimeError("Financial migrations cannot run on the dedicated CMS database")
         with conn.cursor() as cur:
             cur.execute("SELECT pg_advisory_lock(%s);", (LOCK_KEY,))
 
         try:
             ensure_migration_table(conn)
             applied_map = get_applied_migrations(conn)
+            # Validate every selected historical checksum before applying any new file.
+            for stage_name, stage_path in MIGRATION_STAGES:
+                if stages_to_run and stage_name not in stages_to_run:
+                    continue
+                for path in sorted(stage_path.glob("*.sql")):
+                    key = f"{stage_name}/{path.name}"
+                    if key in applied_map and applied_map[key] != get_file_sha256(path):
+                        raise RuntimeError(f"Checksum drift for applied migration {key}; refusing to reapply historical SQL")
+                    if "manual" in stage_name.lower() or "manual" in path.stem.lower():
+                        raise RuntimeError(f"Manual migration forbidden in automatic runner: {key}")
 
             total_applied = 0
             total_skipped = 0
@@ -174,7 +197,7 @@ def run_migrations(db_url: str, stages_to_run=None, dry_run: bool = False):
                         print("✓ OK")
                         total_applied += 1
                     except Exception as e:
-                        print(f"\n✗ FAILED on {version_key}: {e}")
+                        print(f"\n✗ FAILED on {version_key} ({type(e).__name__})")
                         sys.exit(1)
 
             print("\n" + "=" * 70)
@@ -191,7 +214,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run fin-db database migrations")
     parser.add_argument("--url", default=DEFAULT_URL, help="PostgreSQL connection string")
     parser.add_argument("--stage", choices=[s[0] for s in MIGRATION_STAGES], help="Run only specific stage")
-    parser.add_argument("--dry-run", action="store_true", help="Inspect pending migrations without executing")
+    parser.add_argument("--dry-run", "--plan", action="store_true", help="Inspect pending migrations without executing")
     args = parser.parse_args()
 
     stages = [args.stage] if args.stage else None
