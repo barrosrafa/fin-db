@@ -101,3 +101,11 @@ python3 scripts/verify_db.py --assert-empty
 - TimescaleDB é obrigatório para a estrutura temporal; o runner não instala um stub silencioso como fallback.
 - O `--assert-empty` faz consultas somente leitura de existência de linhas, sem alterar o banco.
 - A remoção de seeds e carregadores significa que tabelas de referência também começam vazias; a aplicação não pode depender de catálogos previamente populados.
+
+## Engine de ingestão agendada
+
+O estágio `20_scheduled_engine_v4.5` acrescenta tabelas e views de preços nominais,
+SGS, PTAX, Focus, Tesouro, debêntures e demonstrações CVM, além da identidade
+intraday por origem e da função de reserva por dataset. Não insere políticas nem
+dados; a configuração operacional pertence ao fin-ingestion. A tabela legada
+`canonical.financial_statement` é preservada; a CVM usa `canonical.cvm_statement`.

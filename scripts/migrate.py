@@ -52,6 +52,7 @@ MIGRATION_STAGES = [
     ("17_orders_idempotency", REPO_ROOT / "sql/17_orders_idempotency"),
     ("18_empty_materialized_views", REPO_ROOT / "sql/18_empty_materialized_views"),
     ("19_merge_base_b", REPO_ROOT / "sql/19_merge_base_b"),
+    ("20_scheduled_engine_v4.5", REPO_ROOT / "sql/20_scheduled_engine_v4.5"),
 ]
 
 LOCK_KEY = 742198273
