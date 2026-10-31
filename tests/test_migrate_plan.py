@@ -68,5 +68,28 @@ class MigrationRunnerTests(unittest.TestCase):
             conn.close.assert_called_once()
 
 
+    def test_later_checksum_drift_prevents_first_pending_file(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / "01_pending.sql").write_text("SELECT 917234;")
+            (root / "02_applied.sql").write_text("SELECT 2;")
+            conn = MagicMock()
+            with patch.object(migrate, "MIGRATION_STAGES", [("test", root)]), \
+                 patch.object(migrate, "ensure_timescaledb"), \
+                 patch.object(migrate, "ensure_history_schema", return_value={"test/02_applied.sql": "drift"}), \
+                 patch.object(migrate.psycopg, "connect", return_value=conn):
+                with self.assertRaisesRegex(RuntimeError, "Checksum drift"):
+                    migrate.run_migrations("postgresql://local-test/fin")
+            conn.transaction.assert_not_called()
+
+    def test_manual_sql_is_rejected_even_in_offline_plan(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / "01_manual.sql").write_text("SELECT 1;")
+            with patch.object(migrate, "MIGRATION_STAGES", [("test", root)]):
+                with self.assertRaisesRegex(RuntimeError, "Manual migration forbidden"):
+                    migrate.run_migrations("", dry_run=True)
+
+
 if __name__ == "__main__":
     unittest.main()
