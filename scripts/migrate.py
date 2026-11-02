@@ -49,6 +49,7 @@ MIGRATION_STAGES = [
     ("20_scheduled_engine_v4.5", REPO_ROOT / "sql/20_scheduled_engine_v4.5"),
     ("18_runtime_security", REPO_ROOT / "sql/18_runtime_security"),
     ("23_asset_serving_integrity", REPO_ROOT / "sql/23_asset_serving_integrity"),
+    ("24_api_data_access_v4.6", REPO_ROOT / "sql/24_api_data_access_v4.6"),
 ]
 
 LOCK_KEY = 742198273
