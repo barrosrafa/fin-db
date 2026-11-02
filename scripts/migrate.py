@@ -47,6 +47,7 @@ MIGRATION_STAGES = [
     ("18_empty_materialized_views", REPO_ROOT / "sql/18_empty_materialized_views"),
     ("19_merge_base_b", REPO_ROOT / "sql/19_merge_base_b"),
     ("20_scheduled_engine_v4.5", REPO_ROOT / "sql/20_scheduled_engine_v4.5"),
+    # Preserve this historical stage/ledger key; the duplicate numeric prefix is intentional.
     ("18_runtime_security", REPO_ROOT / "sql/18_runtime_security"),
     ("23_asset_serving_integrity", REPO_ROOT / "sql/23_asset_serving_integrity"),
 ]
@@ -137,6 +138,88 @@ def ensure_history_schema(conn) -> dict[str, str]:
             return history
 
 
+def validate_migration_state(history: dict[str, str], legacy_history: list, has_app_objects: bool) -> None:
+    if has_app_objects and not history and not legacy_history:
+        raise RuntimeError(
+            "Existing application objects were found but no migration ledger exists; "
+            "refusing to replay migrations. Reconcile the schema and ledger first."
+        )
+
+
+def preflight_migration_history(db_url: str, files) -> dict[str, str]:
+    """Read ledgers and target objects before any extension/schema DDL is attempted."""
+    conn = psycopg.connect(direct_connection_url(db_url), autocommit=True, connect_timeout=15)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT to_regclass('system.schema_migrations'), to_regnamespace(%s)",
+                (METADATA_SCHEMA,),
+            )
+            legacy_table, metadata_schema = cur.fetchone()
+            history: dict[str, str] = {}
+            if metadata_schema:
+                cur.execute(
+                    "SELECT obj_description(%s::regnamespace, 'pg_namespace')",
+                    (METADATA_SCHEMA,),
+                )
+                comment = cur.fetchone()[0]
+                if comment is not None:
+                    if not comment.startswith(METADATA_PREFIX):
+                        raise RuntimeError(
+                            f"Schema {METADATA_SCHEMA!r} has unrecognized migration metadata; refusing to proceed."
+                        )
+                    try:
+                        history = json.loads(comment[len(METADATA_PREFIX):])
+                    except json.JSONDecodeError:
+                        raise RuntimeError("Migration metadata is invalid; refusing to proceed.") from None
+                    if not isinstance(history, dict) or any(not isinstance(v, str) for v in history.values()):
+                        raise RuntimeError("Migration metadata has an unexpected format; refusing to proceed.")
+
+            legacy_history = []
+            if legacy_table:
+                cur.execute("SELECT version,checksum FROM system.schema_migrations")
+                legacy_history = cur.fetchall()
+
+            cur.execute(
+                "SELECT EXISTS ("
+                " SELECT 1 FROM pg_namespace "
+                " WHERE nspname NOT LIKE 'pg_%' "
+                "   AND nspname NOT LIKE '_timescaledb_%' "
+                "   AND nspname NOT IN ('information_schema','public','neon_auth','fin_db_migrations',"
+                "       'timescaledb_information','timescaledb_experimental')"
+                ") OR EXISTS ("
+                " SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
+                " WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','S','f') "
+                "   AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass "
+                "       AND d.objid=c.oid AND d.deptype='e')"
+                ")"
+            )
+            has_app_objects = bool(cur.fetchone()[0])
+
+        validate_migration_state(history, legacy_history, has_app_objects)
+        for stage_name, path in files:
+            key = f"{stage_name}/{path.name}"
+            if key in history and history[key] != file_sha256(path):
+                raise RuntimeError(
+                    f"Checksum drift for applied migration {key}; refusing before any DDL."
+                )
+            for version, checksum in legacy_history:
+                if version == key:
+                    if key in history and history[key] != checksum:
+                        raise RuntimeError("Conflicting migration ledgers; reconcile before applying")
+                    if checksum != file_sha256(path):
+                        raise RuntimeError(
+                            f"Checksum drift for applied migration {key}; refusing before any DDL."
+                        )
+        for version, checksum in legacy_history:
+            if version in history and history[version] != checksum:
+                raise RuntimeError("Conflicting migration ledgers; reconcile before applying")
+            history.setdefault(version, checksum)
+        return history
+    finally:
+        conn.close()
+
+
 def _has_executable_sql(source: str) -> bool:
     return any(
         line.strip() and not line.lstrip().startswith("--")
@@ -161,6 +244,7 @@ def run_migrations(db_url: str, stages=None, dry_run: bool = False) -> tuple[int
 
     if urlsplit(db_url).path == '/fin_cms':
         raise ValueError('Financial migrations cannot target the CMS database')
+    preflight_migration_history(db_url, files)
     ensure_timescaledb(db_url)
     conn = psycopg.connect(direct_connection_url(db_url), autocommit=True, connect_timeout=15)
     applied = skipped = 0

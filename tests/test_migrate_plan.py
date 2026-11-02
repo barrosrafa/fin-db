@@ -14,6 +14,64 @@ spec.loader.exec_module(migrate)
 
 
 class MigrationRunnerTests(unittest.TestCase):
+    def test_existing_objects_without_any_ledger_are_rejected(self):
+        with self.assertRaisesRegex(RuntimeError, "no migration ledger exists"):
+            migrate.validate_migration_state({}, [], True)
+        migrate.validate_migration_state({}, [], False)
+        migrate.validate_migration_state({"stage/file.sql": "sha256"}, [], True)
+        migrate.validate_migration_state({}, [("legacy/file.sql", "sha256")], True)
+
+    def test_preflight_refuses_existing_objects_using_only_selects(self):
+        conn = MagicMock()
+        cursor = conn.cursor.return_value.__enter__.return_value
+        cursor.fetchone.side_effect = [(None, None), (True,)]
+        with patch.object(migrate.psycopg, "connect", return_value=conn):
+            with self.assertRaisesRegex(RuntimeError, "no migration ledger exists"):
+                migrate.preflight_migration_history("postgresql://local-test/fin", [])
+        statements = [str(call.args[0]).lstrip().upper() for call in cursor.execute.call_args_list]
+        self.assertTrue(statements)
+        self.assertTrue(all(statement.startswith("SELECT") for statement in statements))
+        conn.close.assert_called_once()
+
+    def test_fresh_empty_database_passes_read_only_preflight(self):
+        conn = MagicMock()
+        cursor = conn.cursor.return_value.__enter__.return_value
+        cursor.fetchone.side_effect = [(None, None), (False,)]
+        with patch.object(migrate.psycopg, "connect", return_value=conn):
+            self.assertEqual(migrate.preflight_migration_history("postgresql://local-test/fin", []), {})
+        statements = [str(call.args[0]).lstrip().upper() for call in cursor.execute.call_args_list]
+        self.assertTrue(all(statement.startswith("SELECT") for statement in statements))
+        conn.close.assert_called_once()
+
+    def test_preflight_refusal_happens_before_timescaledb_ddl(self):
+        with patch.object(migrate, "preflight_migration_history", side_effect=RuntimeError("unsafe target")), \
+             patch.object(migrate, "ensure_timescaledb") as ensure_extension, \
+             patch.object(migrate.psycopg, "connect") as connect:
+            with self.assertRaisesRegex(RuntimeError, "unsafe target"):
+                migrate.run_migrations("postgresql://local-test/fin")
+        ensure_extension.assert_not_called()
+        connect.assert_not_called()
+
+    def test_checksum_drift_is_rejected_before_timescaledb_ddl(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / "01_pending.sql").write_text("SELECT 917234;")
+            (root / "02_applied.sql").write_text("SELECT 2;")
+            conn = MagicMock()
+            cursor = conn.cursor.return_value.__enter__.return_value
+            cursor.fetchone.side_effect = [
+                (None, True),
+                (migrate.METADATA_PREFIX + '{"test/02_applied.sql":"old"}',),
+                (True,),
+            ]
+            with patch.object(migrate, "MIGRATION_STAGES", [("test", root)]), \
+                 patch.object(migrate, "ensure_timescaledb") as ensure_extension, \
+                 patch.object(migrate.psycopg, "connect", return_value=conn):
+                with self.assertRaisesRegex(RuntimeError, "Checksum drift"):
+                    migrate.run_migrations("postgresql://local-test/fin")
+            ensure_extension.assert_not_called()
+            conn.close.assert_called_once()
+
     def test_dry_run_never_connects(self):
         output = io.StringIO()
         with patch.object(migrate.psycopg, "connect", side_effect=AssertionError("network forbidden")) as connect:
@@ -42,6 +100,7 @@ class MigrationRunnerTests(unittest.TestCase):
             conn = MagicMock()
             output = io.StringIO()
             with patch.object(migrate, "MIGRATION_STAGES", [("test", path)]), \
+                 patch.object(migrate, "preflight_migration_history", return_value={}), \
                  patch.object(migrate, "ensure_timescaledb"), \
                  patch.object(migrate, "ensure_history_schema", return_value={}), \
                  patch.object(migrate.psycopg, "connect", return_value=conn):
@@ -58,6 +117,7 @@ class MigrationRunnerTests(unittest.TestCase):
             (path / "01_change.sql").write_text("SELECT 12345;\n")
             conn = MagicMock()
             with patch.object(migrate, "MIGRATION_STAGES", [("test", path)]), \
+                 patch.object(migrate, "preflight_migration_history", return_value={}), \
                  patch.object(migrate, "ensure_timescaledb"), \
                  patch.object(migrate, "ensure_history_schema", return_value={"test/01_change.sql": "old"}), \
                  patch.object(migrate.psycopg, "connect", return_value=conn):
@@ -75,6 +135,7 @@ class MigrationRunnerTests(unittest.TestCase):
             (root / "02_applied.sql").write_text("SELECT 2;")
             conn = MagicMock()
             with patch.object(migrate, "MIGRATION_STAGES", [("test", root)]), \
+                 patch.object(migrate, "preflight_migration_history", return_value={}), \
                  patch.object(migrate, "ensure_timescaledb"), \
                  patch.object(migrate, "ensure_history_schema", return_value={"test/02_applied.sql": "drift"}), \
                  patch.object(migrate.psycopg, "connect", return_value=conn):
