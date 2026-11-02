@@ -7,19 +7,18 @@ import sys
 from pathlib import Path
 
 try:
+    from common import load_dotenv
+except ModuleNotFoundError:  # pragma: no cover - depends on invocation style
+    from scripts.common import load_dotenv
+
+try:
     import psycopg
 except ImportError:
     print("Install psycopg with: pip install 'psycopg[binary]'")
     sys.exit(1)
 
 ROOT = Path(__file__).resolve().parents[1]
-ENV_FILE = ROOT / ".env"
-if ENV_FILE.exists():
-    for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            key, value = line.split("=", 1)
-            os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+load_dotenv(ROOT / ".env")
 
 REQUIRED_EXTENSIONS = ("uuid-ossp", "pgcrypto", "pg_trgm", "vector", "timescaledb")
 INTERNAL_SCHEMAS = ("information_schema", "pg_catalog", "_timescaledb_catalog", "_timescaledb_config", "_timescaledb_internal")
