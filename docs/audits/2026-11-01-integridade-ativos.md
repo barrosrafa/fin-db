@@ -123,23 +123,49 @@ históricos, screener, rankings, comparador, simuladores e carteiras.
    como responsabilidade do `MarketGateway.normalize_official`. O script
    `fin-ingestion/fin_ingestion/operations/replay_official_quotes.py` prepara um
    preview padrão e grava preimage/arquivo fonte antes de escrita idempotente com
-   `--apply`; nenhum modo apply foi executado.
+   `--apply`. A execução oficial de outubro foi aplicada com backup e recibo, conforme evidências abaixo.
 7. **Cobertura pretendida** — busca e paginação no servidor foram preservadas.
    Os gates SQL são aplicados à consulta, não a uma lista especial dos exemplos
    do relatório, para alcançar todas as identidades cobertas pelos dados oficiais.
 
 ### Segurança e alcance da execução
 
-As alterações ficaram locais nos worktrees existentes. Nenhuma consulta de
-correção foi executada no banco, nenhum histórico foi apagado e nenhuma
-infraestrutura ou segredo foi alterado. Testes de regressão locais existem em
-`fin-api/tests/test_audit_remediation.py`,
-`fin-api/tests/test_audit_quote_evidence_postgres.py`,
-`fin-web/src/lib/__tests__/audit-remediation.test.ts` e
-`fin-ingestion/tests/test_audit_quote_dates.py`; não foram executados. Também
-não houve build, deploy, push nem reprocessamento; produção ainda não foi
-corrigida. A migração 23 precisa ser aplicada antes do deploy da API que lê sua
-view CVM.
+Foram aplicados ao banco os dois arquivos aditivos do estágio 23, com histórico
+transacional e checksum do runner. O preview oficial de outubro encontrou 31.014
+candles de 2.016 tickers; 12.882 candles correspondem a instrumentos cadastrados,
+com 1.284 fechamentos diferentes da base legada. O replay de outubro foi aplicado:
+31.014 registros nominais e 12.882 de serving, status `SUCCEEDED`. Nenhum histórico
+foi apagado. O arquivo fonte e uma preimage de 478 KB foram preservados antes da
+escrita. Não houve alteração de carteiras, autenticação ou infraestrutura paga.
+
+Evidências locais: `/Users/rafaelaparecido/fin-run/verification/asset-audit-2026-11-01/`:
+
+- `apply.json`: recibo, contagens e URL oficial do arquivo.
+- `preimage-20261101T170451694396.json.gz`: valores públicos anteriores ao replay.
+- `serving-after.json`: validação somente leitura dos exemplos, sem erros.
+- `universe-validation.json`: busca/paginação cobrindo todos os cadastros.
+
+Cobertura validada: 606 FIIs (331 com cotação comprovada, 281 com P/VP CVM não
+ambíguo), 617 ações (385 com cotação comprovada; dois encerramentos confirmados) e
+10 ETFs (cinco com cotação comprovada). Todos os cadastros permanecem pesquisáveis.
+Ausência de evidência não vira preço zero nem provoca inferência de deslistagem.
+O total do ranking FII é preservado inclusive em offset além da última página.
+
+Os testes novos de integridade passaram em PostgreSQL isolado. Frontend: 46 testes,
+TypeScript e build de produção passaram; lint sem erros, com 21 avisos preexistentes.
+Banco: 67 SQLs validados e seis testes do plano de migração passaram. API: 189 testes passaram em PostgreSQL descartável; dois testes de integração
+com serviços opcionais ficaram para a CI. Ingestão: 27 testes passaram, incluindo
+PostgreSQL real, replay, fator de cotação, datas e proteção do backfill. Os ambientes
+de teste foram atualizados com evidência pública B3 e CVM e cenários sintéticos
+restritos ao banco fin_ci. Total local: 268 testes aprovados e dois condicionais.
+
+As alterações estão versionadas e enviadas em PRs:
+[fin-db #8](https://github.com/barrosrafa/fin-db/pull/8),
+[fin-api #5](https://github.com/barrosrafa/fin-api/pull/5),
+[fin-web #5](https://github.com/barrosrafa/fin-web/pull/5) e
+[fin-ingestion #9](https://github.com/barrosrafa/fin-ingestion/pull/9).
+A execução de banco acima não equivale à publicação dos serviços: o estado de
+release será registrado separadamente, com os checks do SHA correspondente.
 
 A auditoria contém outros achados independentes (autenticação, Docker, CSP,
 migrações, IA/regulação, scraping, navegação, infraestrutura e streaming). Eles
@@ -147,3 +173,78 @@ não são pré-requisitos para proteger a leitura de preços de todos os ativos 
 permanecem fora desta remediação focada em integridade de ativos. Filtros fixos
 de ADTV/P/VP sugeridos no anexo não foram adotados: preço alto ou baixa liquidez
 isolados não provam erro de mercado e tais cortes ocultariam ativos legítimos.
+
+## Trechos centrais da correção
+
+### Preço: `fin-api/app/market/quality.py`
+
+Antes, a existência de uma linha em `market.cotacao_diaria` bastava. Agora o
+compilador das consultas de leitura exige evidência independente:
+
+```sql
+WHERE official.ticker = identity.ticker
+  AND official.reference_date = legacy.data_pregao
+  AND official.source = 'b3' AND official.currency = 'BRL'
+  AND official.interval = 'day'
+  AND official.close = legacy.preco_fechamento
+```
+
+A mesma consulta compara OHLC quando informado, reprova simulação e datas
+futuras. A porta nunca é usada para INSERT/UPDATE de carteira: essas operações
+continuam usando `sqlalchemy.text`, preservando autenticação e transações.
+
+### Patrimônio: migração 23 e `fin-api/app/fiis/service.py`
+
+```sql
+GROUP BY ticker
+HAVING count(DISTINCT cnpj_fundo) = 1
+   AND count(DISTINCT valor_patrimonial_cota) <= 1
+   AND count(DISTINCT patrimonio_liquido) <= 1
+```
+
+```python
+vp = number(row.get("official_vpa"))
+pvp = price / vp if price is not None and vp is not None and vp > 0 else None
+```
+
+É uma razão de preço nominal atual por patrimônio do informe identificado; as
+duas datas são exibidas separadamente. Não se atribui o preço de uma fonte à data
+de outra. Fundos sem identidade CVM unívoca ficam sem VPA/P/VP comprováveis.
+
+### Cancelamento: `fin-web/src/lib/api.ts` e `snapshots.ts`
+
+```typescript
+signal: options?.signal
+  ? AbortSignal.any([options.signal, AbortSignal.timeout(15_000)])
+  : AbortSignal.timeout(15_000)
+```
+
+`FIIDetailClient` usa somente `getFIIDetail(ticker, signal)`, valida a identidade
+da resposta, ignora respostas canceladas e encerra loading em `finally`. Nunca
+consulta a primeira página para adivinhar o preço do ticker. O `DataStatus`
+avalia envelhecimento depois da hidratação, preservando o prerender do Next 16.
+
+### Negociação: `fin-api/app/market/lifecycle.py`
+
+```python
+if trading_status(t, asset_row.get("registry_status")).status == "inactive":
+    raise HTTPException(status_code=409, detail="Trading ended; current valuation unavailable")
+```
+
+Eventos confirmados têm vigência, sucessor e documento de origem. A data de negócio
+é avaliada em `America/Sao_Paulo`, inclusive nos testes de cobertura da carteira.
+Ausência de negociação em outubro não equivale a encerramento.
+
+### Recuperação: `fin-ingestion/fin_ingestion/operations/replay_official_quotes.py`
+
+```bash
+python -m fin_ingestion.operations.replay_official_quotes \
+  --year 2026 --month 10 --output /caminho/para/evidencias
+# Após conferir o preview, a mesma operação com --apply preserva preimage
+# e publica primeiro a evidência nominal, depois a projeção legada.
+```
+
+O arquivo anual de 2026 ultrapassou o limite de descompressão do coletor e foi
+recusado sem escrita. Foi usado o arquivo mensal oficial, mantendo o limite de
+segurança. O replay não cria classificações para tickers ainda não cadastrados.
+O backfill secundário passa a preservar registros cuja sessão já tem prova B3.
