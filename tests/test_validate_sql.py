@@ -41,6 +41,23 @@ class SqlValidationTests(unittest.TestCase):
             violations = validate_sql._validate_source(path)
         self.assertEqual(violations, [])
 
+    def test_do_grants_and_policies_are_ddl(self):
+        source = """DO $$ BEGIN
+            GRANT SELECT,INSERT,UPDATE,DELETE ON example_table TO app_role;
+            REVOKE UPDATE ON example_table FROM app_role;
+            CREATE POLICY own ON example_table FOR INSERT WITH CHECK (true);
+            EXECUTE format('GRANT INSERT,UPDATE ON %I TO app_role', 'example_table');
+        END $$;"""
+        self.assertFalse(validate_sql._contains_do_dml(source))
+
+    def test_do_dynamic_write_templates_are_rejected(self):
+        for verb, statement in [('UPDATE', 'UPDATE %I SET value=1'),
+                                ('DELETE', 'DELETE FROM %I'),
+                                ('TRUNCATE', 'TRUNCATE %I')]:
+            with self.subTest(verb=verb):
+                source = "DO $$ BEGIN EXECUTE format('" + statement + "', 'example_table'); END $$;"
+                self.assertTrue(validate_sql._contains_do_dml(source))
+
     def test_load_dotenv_does_not_override_existing_environment(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / ".env"

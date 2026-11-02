@@ -6,22 +6,30 @@ from pathlib import Path
 import re
 from collections.abc import Iterable
 
-from pglast import parse_sql
+from pglast import parse_plpgsql, parse_sql
 from pglast.stream import RawStream
 
 FORBIDDEN_NODES = {"InsertStmt", "UpdateStmt", "DeleteStmt", "MergeStmt", "CopyStmt", "TruncateStmt"}
-DO_DML_WORDS = ("INSERT", "UPDATE", "DELETE", "MERGE")
-REFERENTIAL_ACTION = re.compile(
-    r"\bON\s+(?:DELETE|UPDATE)\s+"
-    r"(?:CASCADE|RESTRICT|SET\s+NULL|SET\s+DEFAULT|NO\s+ACTION)\b",
-    re.IGNORECASE,
-)
+def _contains_do_dml(rendered: str) -> bool:
+    """Inspect executed SQL, keeping GRANT/policy keywords out of DML checks."""
+    def walk(node):
+        if isinstance(node, list):
+            return any(walk(item) for item in node)
+        if not isinstance(node, dict):
+            return False
+        if "PLpgSQL_stmt_execsql" in node:
+            query = node["PLpgSQL_stmt_execsql"]["sqlstmt"]["PLpgSQL_expr"]["query"]
+            return any(type(raw.stmt).__name__ in FORBIDDEN_NODES for raw in parse_sql(query))
+        if "PLpgSQL_stmt_dynexecute" in node:
+            query = node["PLpgSQL_stmt_dynexecute"]["query"]["PLpgSQL_expr"]["query"]
+            # Inspect literal SQL templates without mistaking role privileges or
+            # has_table_privilege(..., 'INSERT') arguments for executed writes.
+            for literal in re.findall(r"'((?:[^']|'')*)'", query):
+                if re.match(r"\s*(INSERT|UPDATE|DELETE|MERGE|COPY|TRUNCATE)\b", literal, re.I):
+                    return True
+        return any(walk(value) for value in node.values())
 
-
-def _contains_do_dml(rendered: str, words: Iterable[str] = DO_DML_WORDS) -> bool:
-    """Detect executable DML tokens in a rendered PostgreSQL DO statement."""
-    statement_without_fk_actions = REFERENTIAL_ACTION.sub("", rendered)
-    return any(re.search(rf"\b{word}\b", statement_without_fk_actions) for word in words)
+    return walk(parse_plpgsql(rendered))
 
 
 def _validate_source(path: Path) -> list[str]:
